@@ -48,6 +48,11 @@ export default function Home() {
   const [day, setDay] = useState("today");
   const factor = seed[pref] ?? pref.charCodeAt(0) % 6;
   const tomorrow = day === "tomorrow" ? 1 : 0;
+  const mapCities = useMemo(() => cities.map((c, i) => ({
+    ...c,
+    icon: tomorrow ? ["☀️","🌤️","☀️","🌤️","☀️","☀️","🌤️","☀️","☀️","🌦️","🌤️","🌦️"][i] : c.icon,
+    temp: tomorrow ? `${Number.parseInt(c.temp) + (i % 3 === 0 ? 0 : 1)}°` : c.temp,
+  })), [tomorrow]);
   const rows = useMemo(() => providers.map((p, i) => ({ ...p, weather: tomorrow ? "晴れ時々くもり" : i === 2 && factor > 3 ? "くもり時々雨" : "くもりのち雨", hi: 29 + tomorrow + ((factor + i) % 3), lo: 23 + ((factor + i) % 2), rain: tomorrow ? 20 + ((factor + i * 5) % 25) : 50 + ((factor * 7 + i * 10) % 40), wind: 2 + ((factor + i) % 3) })), [factor, tomorrow]);
   const active = regions.find(r => r.name === region) ?? regions[2];
   const chooseRegion = (name: string) => { const r = regions.find(x => x.name === name)!; setRegion(name); setPref(r.prefs[0]); };
@@ -60,10 +65,10 @@ export default function Home() {
     <div className="mx-auto grid max-w-[1500px] gap-5 p-4 md:p-8 xl:grid-cols-[560px_1fr]">
       <aside className="space-y-5">
         <section className="overflow-hidden rounded-[28px] bg-[#15335c] p-5 text-white shadow-xl shadow-slate-300/40"><p className="mb-3 text-xs font-bold tracking-wider text-blue-200">場所を選ぶ</p><div className="relative"><Search className="absolute left-3 top-3 text-slate-400" size={18}/><Input value={query} onChange={e=>setQuery(e.target.value)} placeholder="市区町村・施設名を検索" className="h-11 border-white/10 bg-white pl-10 text-slate-900 placeholder:text-slate-400"/></div><Button variant="outline" className="mt-3 w-full border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"><LocateFixed size={17}/>現在地の天気を見る</Button></section>
-        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-2 flex items-center justify-between"><div><p className="text-xs font-bold text-blue-600">全国の今日の天気</p><h2 className="font-black">主要12都市を一目で確認</h2></div><MapPin className="text-blue-500"/></div>
+        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-2 flex items-center justify-between"><div><p className="text-xs font-bold text-blue-600">全国の{day === "today" ? "今日" : "明日"}の天気</p><h2 className="font-black">主要12都市を一目で確認</h2></div><MapPin className="text-blue-500"/></div>
           <div className="relative mx-auto aspect-square w-full max-w-[520px] overflow-hidden rounded-2xl bg-gradient-to-b from-sky-50 to-blue-50/40">
             <img src="/japan-prefectures.svg" alt="47都道府県の境界を表示した日本地図" className="h-full w-full object-contain p-3 opacity-90 sm:p-5"/>
-            {cities.map(c=><button key={c.name} onClick={()=>{setRegion(c.region);setPref(c.pref)}} style={{left:`${c.left}%`,top:`${c.top}%`}} className="absolute z-20 flex min-w-[48px] -translate-x-1/2 items-center justify-center gap-0.5 rounded-lg border border-white bg-white/95 px-1 py-0.5 text-left shadow-md transition hover:z-30 hover:scale-110 md:min-w-[72px] md:gap-1 md:rounded-xl md:px-2 md:py-1 md:shadow-lg"><span className="text-sm md:text-xl">{c.icon}</span><span><b className="block text-[8px] leading-none md:text-[10px]">{c.name}</b><b className="text-[10px] md:text-xs">{c.temp}</b></span></button>)}
+            {mapCities.map(c=><button key={c.name} onClick={()=>{setRegion(c.region);setPref(c.pref)}} style={{left:`${c.left}%`,top:`${c.top}%`}} className="absolute z-20 flex min-w-[56px] -translate-x-1/2 items-center justify-center gap-0.5 rounded-lg border border-white bg-white/95 px-1.5 py-1 text-left shadow-md transition hover:z-30 hover:scale-110 md:min-w-[78px] md:gap-1 md:rounded-xl md:px-2.5 md:py-1.5 md:shadow-lg"><span className="text-base md:text-2xl">{c.icon}</span><span><b className="block text-[9px] leading-none md:text-[11px]">{c.name}</b><b className="text-[11px] md:text-sm">{c.temp}</b></span></button>)}
             <span className="absolute bottom-2 right-3 text-[9px] font-medium text-slate-400">地図: Geolonia / GFDL</span>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2"><Select value={region} onValueChange={chooseRegion}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{regions.map(r=><SelectItem key={r.name} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select><Select value={pref} onValueChange={setPref}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{active.prefs.map(p=><SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
