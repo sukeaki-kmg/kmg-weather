@@ -26,22 +26,19 @@ const providers = [
   { name: "OpenWeather", tint: "#fff2e6" },
 ];
 const links = ["ウェザーニュース", "Yahoo!天気", "tenki.jp"];
-const mapPaths: Record<string, string> = {
-  "北海道": "M330 30 L378 18 414 38 408 66 382 72 365 58 342 66 322 50Z",
-  "東北": "M321 82 C337 88 340 108 332 125 L319 163 300 168 291 151 301 126 303 97Z",
-  "関東": "M292 164 L319 166 327 187 313 210 294 207 278 190Z",
-  "中部": "M220 157 L289 148 297 173 278 195 255 203 239 186 210 184Z",
-  "近畿": "M174 180 L214 174 241 189 231 210 196 220 169 206Z",
-  "中国": "M104 193 L170 180 181 207 151 218 111 214 91 203Z",
-  "四国": "M128 229 L181 218 198 231 179 247 139 250 119 241Z",
-  "九州": "M64 218 L112 211 125 234 110 258 105 288 83 310 58 290 48 255Z",
-  "沖縄": "M20 324 C35 316 48 322 43 334 34 345 18 344 13 336Z",
-};
-const metro = [
-  { name: "埼玉", icon: "☀️", temp: "31°", pos: "right-[3%] top-[44%]" },
-  { name: "東京", icon: "🌦️", temp: "30°", pos: "right-[0%] top-[58%]" },
-  { name: "千葉", icon: "🌧️", temp: "29°", pos: "right-[2%] top-[72%]" },
-  { name: "神奈川", icon: "🌥️", temp: "30°", pos: "right-[25%] top-[67%]" },
+const cities = [
+  { name:"札幌", pref:"北海道", region:"北海道", icon:"🌤️", temp:"27°", left:77, top:9 },
+  { name:"仙台", pref:"宮城県", region:"東北", icon:"🌦️", temp:"29°", left:72, top:31 },
+  { name:"新潟", pref:"新潟県", region:"中部", icon:"☀️", temp:"31°", left:57, top:35 },
+  { name:"東京", pref:"東京都", region:"関東", icon:"🌧️", temp:"30°", left:70, top:47 },
+  { name:"金沢", pref:"石川県", region:"中部", icon:"🌤️", temp:"30°", left:44, top:43 },
+  { name:"名古屋", pref:"愛知県", region:"中部", icon:"☀️", temp:"33°", left:52, top:55 },
+  { name:"大阪", pref:"大阪府", region:"近畿", icon:"🌤️", temp:"32°", left:42, top:61 },
+  { name:"広島", pref:"広島県", region:"中国", icon:"☀️", temp:"32°", left:27, top:59 },
+  { name:"高松", pref:"香川県", region:"四国", icon:"🌤️", temp:"31°", left:34, top:69 },
+  { name:"福岡", pref:"福岡県", region:"九州", icon:"🌦️", temp:"30°", left:14, top:66 },
+  { name:"鹿児島", pref:"鹿児島県", region:"九州", icon:"🌧️", temp:"29°", left:12, top:82 },
+  { name:"那覇", pref:"沖縄県", region:"沖縄", icon:"🌦️", temp:"30°", left:3, top:91 },
 ];
 
 export default function Home() {
@@ -60,17 +57,14 @@ export default function Home() {
       <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-[#246bfd] text-white shadow-lg shadow-blue-200"><Compass size={23}/></span><div><h1 className="text-lg font-black tracking-tight">天気コンパス</h1><p className="text-[10px] font-bold tracking-[.14em] text-slate-400">FORECAST COMPARATOR</p></div></div>
       <div className="hidden items-center gap-2 text-xs font-semibold text-slate-500 md:flex"><ShieldCheck size={16} className="text-emerald-500"/>3つの予報データを比較中</div>
     </div></header>
-    <div className="mx-auto grid max-w-[1440px] gap-5 p-4 md:p-8 xl:grid-cols-[430px_1fr]">
+    <div className="mx-auto grid max-w-[1500px] gap-5 p-4 md:p-8 xl:grid-cols-[560px_1fr]">
       <aside className="space-y-5">
         <section className="overflow-hidden rounded-[28px] bg-[#15335c] p-5 text-white shadow-xl shadow-slate-300/40"><p className="mb-3 text-xs font-bold tracking-wider text-blue-200">場所を選ぶ</p><div className="relative"><Search className="absolute left-3 top-3 text-slate-400" size={18}/><Input value={query} onChange={e=>setQuery(e.target.value)} placeholder="市区町村・施設名を検索" className="h-11 border-white/10 bg-white pl-10 text-slate-900 placeholder:text-slate-400"/></div><Button variant="outline" className="mt-3 w-full border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"><LocateFixed size={17}/>現在地の天気を見る</Button></section>
-        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-2 flex items-center justify-between"><div><p className="text-xs font-bold text-blue-600">日本地図</p><h2 className="font-black">エリアから選択</h2></div><MapPin className="text-blue-500"/></div>
-          <div className="relative mx-auto aspect-[1.12] w-full max-w-[390px] overflow-hidden rounded-2xl bg-gradient-to-b from-sky-50 to-blue-50/40">
-            <svg viewBox="0 0 440 360" className="h-full w-full drop-shadow-sm" aria-label="日本地図">
-              <path d="M40 98 C76 78 119 70 158 78 M49 124 C92 103 135 99 173 105 M58 151 C99 135 139 132 182 139" fill="none" stroke="#d9ecf8" strokeWidth="2"/>
-              {regions.map(r => <g key={r.name} role="button" tabIndex={0} aria-label={`${r.name}を選択`} onClick={()=>chooseRegion(r.name)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" ") chooseRegion(r.name)}} className="cursor-pointer outline-none"><path d={mapPaths[r.name]} fill={r.color} stroke={region===r.name ? "#15335c" : "#ffffff"} strokeWidth={region===r.name ? 5 : 3} className="transition-all hover:brightness-95"/><text x={r.name==="北海道"?366:r.name==="東北"?316:r.name==="関東"?302:r.name==="中部"?253:r.name==="近畿"?202:r.name==="中国"?135:r.name==="四国"?158:r.name==="九州"?87:29} y={r.name==="北海道"?48:r.name==="東北"?125:r.name==="関東"?190:r.name==="中部"?179:r.name==="近畿"?201:r.name==="中国"?204:r.name==="四国"?239:r.name==="九州"?259:334} textAnchor="middle" className="pointer-events-none fill-slate-700 text-[11px] font-black">{r.name}</text></g>)}
-            </svg>
-            <div className="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-1 text-[10px] font-black text-slate-500 shadow-sm">首都圏・今日の天気</div>
-            {metro.map(m=><button key={m.name} onClick={()=>{setRegion("関東");setPref(m.name==="東京"?"東京都":`${m.name}県`)}} className={`absolute ${m.pos} z-20 flex min-w-[84px] items-center gap-1 rounded-xl border border-white bg-white/95 px-2 py-1.5 text-left shadow-lg transition hover:scale-105`}><span className="text-2xl">{m.icon}</span><span><b className="block text-[10px] leading-none">{m.name}</b><b className="text-sm">{m.temp}</b></span></button>)}
+        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-2 flex items-center justify-between"><div><p className="text-xs font-bold text-blue-600">全国の今日の天気</p><h2 className="font-black">主要12都市を一目で確認</h2></div><MapPin className="text-blue-500"/></div>
+          <div className="relative mx-auto aspect-square w-full max-w-[520px] overflow-hidden rounded-2xl bg-gradient-to-b from-sky-50 to-blue-50/40">
+            <img src="/japan-prefectures.svg" alt="47都道府県の境界を表示した日本地図" className="h-full w-full object-contain p-3 opacity-90"/>
+            {cities.map(c=><button key={c.name} onClick={()=>{setRegion(c.region);setPref(c.pref)}} style={{left:`${c.left}%`,top:`${c.top}%`}} className="absolute z-20 flex min-w-[72px] -translate-x-1/2 items-center gap-1 rounded-xl border border-white bg-white/95 px-2 py-1 text-left shadow-lg transition hover:z-30 hover:scale-110"><span className="text-xl">{c.icon}</span><span><b className="block text-[10px] leading-none">{c.name}</b><b className="text-xs">{c.temp}</b></span></button>)}
+            <span className="absolute bottom-2 right-3 text-[9px] font-medium text-slate-400">地図: Geolonia / GFDL</span>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2"><Select value={region} onValueChange={chooseRegion}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{regions.map(r=><SelectItem key={r.name} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select><Select value={pref} onValueChange={setPref}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{active.prefs.map(p=><SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
         </section>
