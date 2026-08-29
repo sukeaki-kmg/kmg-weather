@@ -38,7 +38,7 @@ const cities = [
   { name:"高松", pref:"香川県", region:"四国", icon:"🌤️", temp:"31°", left:34, top:69 },
   { name:"福岡", pref:"福岡県", region:"九州", icon:"🌦️", temp:"30°", left:14, top:66 },
   { name:"鹿児島", pref:"鹿児島県", region:"九州", icon:"🌧️", temp:"29°", left:12, top:82 },
-  { name:"那覇", pref:"沖縄県", region:"沖縄", icon:"🌦️", temp:"30°", left:3, top:91 },
+  { name:"那覇", pref:"沖縄県", region:"沖縄", icon:"🌦️", temp:"30°", left:11, top:89 },
 ];
 
 export default function Home() {
@@ -68,7 +68,7 @@ export default function Home() {
         <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm sm:rounded-[28px] sm:p-5"><div className="mb-2 flex items-center justify-between"><div><p className="text-xs font-bold text-blue-600">全国の{day === "today" ? "今日" : "明日"}の天気</p><h2 className="font-black">主要12都市を一目で確認</h2></div><MapPin className="text-blue-500"/></div>
           <div className="relative mx-auto aspect-square w-full max-w-[660px] overflow-hidden rounded-2xl bg-gradient-to-b from-sky-50 to-blue-50/40">
             <img src="/japan-prefectures.svg" alt="47都道府県の境界を表示した日本地図" className="h-full w-full object-contain p-1 opacity-90 sm:p-3"/>
-            {mapCities.map(c=><button key={c.name} onClick={()=>{setRegion(c.region);setPref(c.pref)}} style={{left:`${c.left}%`,top:`${c.top}%`}} className="absolute z-20 flex min-w-[56px] -translate-x-1/2 items-center justify-center gap-0.5 rounded-lg border border-white bg-white/95 px-1.5 py-1 text-left shadow-md transition hover:z-30 hover:scale-110 md:min-w-[78px] md:gap-1 md:rounded-xl md:px-2.5 md:py-1.5 md:shadow-lg"><span className="text-base md:text-2xl">{c.icon}</span><span><b className="block text-[9px] leading-none md:text-[11px]">{c.name}</b><b className="text-[11px] md:text-sm">{c.temp}</b></span></button>)}
+            {mapCities.map(c=><button key={c.name} onClick={()=>{setRegion(c.region);setPref(c.pref)}} style={{left:`${c.left}%`,top:`${c.top}%`}} className="absolute z-20 flex min-w-[66px] -translate-x-1/2 items-center justify-center gap-1 rounded-xl border border-white bg-white/95 px-2 py-1.5 text-left shadow-lg transition hover:z-30 hover:scale-110 md:min-w-[94px] md:gap-1.5 md:px-3 md:py-2"><span className="text-xl md:text-3xl">{c.icon}</span><span><b className="block text-[10px] leading-none md:text-xs">{c.name}</b><b className="text-xs md:text-base">{c.temp}</b></span></button>)}
             <span className="absolute bottom-2 right-3 text-[9px] font-medium text-slate-400">地図: Geolonia / GFDL</span>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2"><Select value={region} onValueChange={chooseRegion}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{regions.map(r=><SelectItem key={r.name} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select><Select value={pref} onValueChange={setPref}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{active.prefs.map(p=><SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
