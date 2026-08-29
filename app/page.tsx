@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const regions = [
   { name: "北海道", x: 82, y: 10, w: 16, h: 14, color: "#7cc8d8", prefs: ["北海道"] },
@@ -19,22 +20,31 @@ const regions = [
   { name: "沖縄", x: 2, y: 87, w: 12, h: 9, color: "#65c7bd", prefs: ["沖縄県"] },
 ];
 const seed: Record<string, number> = { "東京都": 0, "北海道": 3, "沖縄県": 7, "大阪府": 2, "福岡県": 5 };
-const providers = [{ name: "気象庁", tint: "#e8f0ff" }, { name: "Apple Weather", tint: "#f0f1f4" }, { name: "OpenWeather", tint: "#fff2e6" }];
+const providers = [
+  { name: "気象庁", tint: "#e8f0ff", ready: true },
+  { name: "Apple Weather", tint: "#f0f1f4", ready: true },
+  { name: "OpenWeather", tint: "#fff2e6", ready: true },
+  { name: "ウェザーニュース", tint: "#e8f8ff", ready: false },
+  { name: "Yahoo!天気", tint: "#fff0f0", ready: false },
+  { name: "tenki.jp", tint: "#edf8ee", ready: false },
+];
 const links = ["ウェザーニュース", "Yahoo!天気", "tenki.jp"];
 
 export default function Home() {
   const [pref, setPref] = useState("東京都");
   const [region, setRegion] = useState("関東");
   const [query, setQuery] = useState("");
+  const [day, setDay] = useState("today");
   const factor = seed[pref] ?? pref.charCodeAt(0) % 6;
-  const rows = useMemo(() => providers.map((p, i) => ({ ...p, weather: i === 2 && factor > 3 ? "くもり時々雨" : "くもりのち雨", hi: 29 + ((factor + i) % 3), lo: 23 + ((factor + i) % 2), rain: 50 + ((factor * 7 + i * 10) % 40), wind: 2 + ((factor + i) % 3) })), [factor]);
+  const tomorrow = day === "tomorrow" ? 1 : 0;
+  const rows = useMemo(() => providers.map((p, i) => ({ ...p, weather: tomorrow ? "晴れ時々くもり" : i === 2 && factor > 3 ? "くもり時々雨" : "くもりのち雨", hi: 29 + tomorrow + ((factor + i) % 3), lo: 23 + ((factor + i) % 2), rain: tomorrow ? 20 + ((factor + i * 5) % 25) : 50 + ((factor * 7 + i * 10) % 40), wind: 2 + ((factor + i) % 3) })), [factor, tomorrow]);
   const active = regions.find(r => r.name === region) ?? regions[2];
   const chooseRegion = (name: string) => { const r = regions.find(x => x.name === name)!; setRegion(name); setPref(r.prefs[0]); };
 
   return <main className="min-h-screen bg-[#f3f7fb] text-[#13233b]">
     <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur"><div className="mx-auto flex max-w-[1440px] items-center justify-between px-4 py-3 md:px-8">
       <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-[#246bfd] text-white shadow-lg shadow-blue-200"><Compass size={23}/></span><div><h1 className="text-lg font-black tracking-tight">天気コンパス</h1><p className="text-[10px] font-bold tracking-[.14em] text-slate-400">FORECAST COMPARATOR</p></div></div>
-      <div className="hidden items-center gap-2 text-xs font-semibold text-slate-500 md:flex"><ShieldCheck size={16} className="text-emerald-500"/>3つの予報データを比較中</div>
+      <div className="hidden items-center gap-2 text-xs font-semibold text-slate-500 md:flex"><ShieldCheck size={16} className="text-emerald-500"/>6つの予報元を一覧比較</div>
     </div></header>
     <div className="mx-auto grid max-w-[1440px] gap-5 p-4 md:p-8 xl:grid-cols-[430px_1fr]">
       <aside className="space-y-5">
@@ -45,10 +55,11 @@ export default function Home() {
         </section>
       </aside>
       <div className="space-y-5">
-        <section className="relative overflow-hidden rounded-[32px] bg-gradient-to-br from-[#2872ff] via-[#438cf8] to-[#79b7f6] p-6 text-white shadow-xl shadow-blue-200/70 md:p-8"><div className="absolute -right-10 -top-20 size-64 rounded-full bg-white/10"/><div className="relative flex flex-col justify-between gap-8 md:flex-row md:items-center"><div><div className="flex items-center gap-2 text-sm font-bold text-blue-100"><Navigation size={16}/>{pref} <span className="rounded-full bg-white/20 px-2 py-1 text-[10px]">デモデータ</span></div><h2 className="mt-4 text-3xl font-black md:text-4xl">午後から雨の可能性が高い</h2><p className="mt-2 text-blue-100">外出は14時までがおすすめ。折りたたみ傘があると安心です。</p></div><div className="flex items-center gap-4 md:pr-6"><CloudRain size={72} strokeWidth={1.5}/><div><div className="text-6xl font-light">{30 + factor%2}°</div><div className="mt-1 text-sm font-bold">体感温度 {31 + factor%2}°</div></div></div></div>
-          <div className="relative mt-7 grid grid-cols-2 gap-3 md:grid-cols-4">{[{i:<Umbrella key="i"/>,l:"傘推奨度",v:`${82+factor}%`},{i:<ShieldCheck key="i"/>,l:"予報一致度",v:"2 / 3"},{i:<Wind key="i"/>,l:"最大風速",v:`${4+factor%3} m/s`},{i:<Sun key="i"/>,l:"紫外線",v:"やや強い"}].map(x=><div key={x.l} className="rounded-2xl bg-white/15 p-3 backdrop-blur"><div className="flex items-center gap-2 text-xs text-blue-100">{x.i}{x.l}</div><div className="mt-1 text-xl font-black">{x.v}</div></div>)}</div>
+        <Tabs value={day} onValueChange={setDay} className="w-full"><TabsList className="grid h-12 w-full grid-cols-2 rounded-2xl bg-white p-1 shadow-sm"><TabsTrigger value="today" className="rounded-xl text-sm font-black">今日 <span className="ml-2 text-xs font-medium text-slate-400">8/29</span></TabsTrigger><TabsTrigger value="tomorrow" className="rounded-xl text-sm font-black">明日 <span className="ml-2 text-xs font-medium text-slate-400">8/30</span></TabsTrigger></TabsList></Tabs>
+        <section className="relative overflow-hidden rounded-[32px] bg-gradient-to-br from-[#2872ff] via-[#438cf8] to-[#79b7f6] p-6 text-white shadow-xl shadow-blue-200/70 md:p-8"><div className="absolute -right-10 -top-20 size-64 rounded-full bg-white/10"/><div className="relative flex flex-col justify-between gap-8 md:flex-row md:items-center"><div><div className="flex items-center gap-2 text-sm font-bold text-blue-100"><Navigation size={16}/>{pref} · {day === "today" ? "今日" : "明日"} <span className="rounded-full bg-white/20 px-2 py-1 text-[10px]">デモデータ</span></div><h2 className="mt-4 text-3xl font-black md:text-4xl">{tomorrow ? "日中は晴れて過ごしやすい" : "午後から雨の可能性が高い"}</h2><p className="mt-2 text-blue-100">{tomorrow ? "朝晩との気温差に注意。傘の出番は少なそうです。" : "外出は14時までがおすすめ。折りたたみ傘があると安心です。"}</p></div><div className="flex items-center gap-4 md:pr-6">{tomorrow ? <Sun size={72} strokeWidth={1.5}/> : <CloudRain size={72} strokeWidth={1.5}/>}<div><div className="text-6xl font-light">{30 + tomorrow + factor%2}°</div><div className="mt-1 text-sm font-bold">体感温度 {31 + tomorrow + factor%2}°</div></div></div></div>
+          <div className="relative mt-7 grid grid-cols-2 gap-3 md:grid-cols-4">{[{i:<Umbrella key="i"/>,l:"傘推奨度",v:tomorrow ? `${28+factor}%` : `${82+factor}%`},{i:<ShieldCheck key="i"/>,l:"予報一致度",v:"2 / 3"},{i:<Wind key="i"/>,l:"最大風速",v:`${4+factor%3} m/s`},{i:<Sun key="i"/>,l:"紫外線",v:tomorrow ? "強い" : "やや強い"}].map(x=><div key={x.l} className="rounded-2xl bg-white/15 p-3 backdrop-blur"><div className="flex items-center gap-2 text-xs text-blue-100">{x.i}{x.l}</div><div className="mt-1 text-xl font-black">{x.v}</div></div>)}</div>
         </section>
-        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm md:p-6"><div className="flex items-end justify-between"><div><p className="text-xs font-bold text-blue-600">FORECAST SOURCES</p><h2 className="text-xl font-black">予報を横並びで比較</h2></div><p className="hidden text-xs text-slate-400 sm:block">最終更新 12:00</p></div><div className="mt-5 overflow-x-auto"><table className="w-full min-w-[680px] text-left"><thead><tr className="border-b text-xs text-slate-400"><th className="pb-3">予報元</th><th className="pb-3">天気</th><th className="pb-3">最高 / 最低</th><th className="pb-3">降水確率</th><th className="pb-3">風速</th></tr></thead><tbody>{rows.map(r=><tr key={r.name} className="border-b border-slate-100 last:border-0"><td className="py-4"><span className="mr-3 inline-block size-3 rounded-full" style={{background:r.tint,border:"1px solid #94a3b8"}}/><b>{r.name}</b></td><td className="py-4"><span className="inline-flex items-center gap-2"><CloudRain size={19} className="text-blue-500"/>{r.weather}</span></td><td className="py-4 font-bold"><span className="text-rose-500">{r.hi}°</span> / <span className="text-blue-500">{r.lo}°</span></td><td className="py-4"><div className="flex items-center gap-3"><Progress value={r.rain} className="h-2 w-20"/><b>{r.rain}%</b></div></td><td className="py-4">{r.wind} m/s</td></tr>)}</tbody></table></div></section>
+        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm md:p-6"><div className="flex items-end justify-between"><div><p className="text-xs font-bold text-blue-600">FORECAST SOURCES · {day === "today" ? "TODAY" : "TOMORROW"}</p><h2 className="text-xl font-black">6つの予報元を横並びで比較</h2></div><p className="hidden text-xs text-slate-400 sm:block">最終更新 12:00</p></div><div className="mt-5 overflow-x-auto"><table className="w-full min-w-[760px] text-left"><thead><tr className="border-b text-xs text-slate-400"><th className="pb-3">予報元</th><th className="pb-3">天気</th><th className="pb-3">最高 / 最低</th><th className="pb-3">降水確率</th><th className="pb-3">風速</th></tr></thead><tbody>{rows.map(r=><tr key={r.name} className="border-b border-slate-100 last:border-0"><td className="py-4"><span className="mr-3 inline-block size-3 rounded-full" style={{background:r.tint,border:"1px solid #94a3b8"}}/><b>{r.name}</b>{!r.ready&&<span className="ml-2 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">API契約待ち</span>}</td>{r.ready?<><td className="py-4"><span className="inline-flex items-center gap-2"><CloudRain size={19} className="text-blue-500"/>{r.weather}</span></td><td className="py-4 font-bold"><span className="text-rose-500">{r.hi}°</span> / <span className="text-blue-500">{r.lo}°</span></td><td className="py-4"><div className="flex items-center gap-3"><Progress value={r.rain} className="h-2 w-20"/><b>{r.rain}%</b></div></td><td className="py-4">{r.wind} m/s</td></>:<td colSpan={4} className="py-4 text-sm text-slate-400">公式データ契約後に自動表示されます</td>}</tr>)}</tbody></table></div><div className="mt-4 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-800">ウェザーニュース・Yahoo!天気・tenki.jpは、一般ページの無断取得を行わず、公式API／法人契約で連携します。</div></section>
         <section className="grid gap-3 md:grid-cols-3">{links.map((l,i)=><a key={l} href={i===0?"https://weathernews.jp/":i===1?"https://weather.yahoo.co.jp/weather/":"https://tenki.jp/"} target="_blank" rel="noreferrer" className="group flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 font-bold shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md"><span><span className="mb-1 block text-[10px] font-bold text-slate-400">詳しい予報を見る</span>{l}</span><ExternalLink size={17} className="text-slate-400 group-hover:text-blue-500"/></a>)}</section>
         <p className="px-2 text-center text-[11px] leading-5 text-slate-400">総合判断は複数の予報を独自に集計した参考情報です。警報・避難情報は必ず気象庁や自治体の最新情報をご確認ください。</p>
       </div>
