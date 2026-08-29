@@ -26,6 +26,23 @@ const providers = [
   { name: "OpenWeather", tint: "#fff2e6" },
 ];
 const links = ["ウェザーニュース", "Yahoo!天気", "tenki.jp"];
+const mapPaths: Record<string, string> = {
+  "北海道": "M330 30 L378 18 414 38 408 66 382 72 365 58 342 66 322 50Z",
+  "東北": "M321 82 C337 88 340 108 332 125 L319 163 300 168 291 151 301 126 303 97Z",
+  "関東": "M292 164 L319 166 327 187 313 210 294 207 278 190Z",
+  "中部": "M220 157 L289 148 297 173 278 195 255 203 239 186 210 184Z",
+  "近畿": "M174 180 L214 174 241 189 231 210 196 220 169 206Z",
+  "中国": "M104 193 L170 180 181 207 151 218 111 214 91 203Z",
+  "四国": "M128 229 L181 218 198 231 179 247 139 250 119 241Z",
+  "九州": "M64 218 L112 211 125 234 110 258 105 288 83 310 58 290 48 255Z",
+  "沖縄": "M20 324 C35 316 48 322 43 334 34 345 18 344 13 336Z",
+};
+const metro = [
+  { name: "埼玉", icon: "☀️", temp: "31°", pos: "right-[3%] top-[44%]" },
+  { name: "東京", icon: "🌦️", temp: "30°", pos: "right-[0%] top-[58%]" },
+  { name: "千葉", icon: "🌧️", temp: "29°", pos: "right-[2%] top-[72%]" },
+  { name: "神奈川", icon: "🌥️", temp: "30°", pos: "right-[25%] top-[67%]" },
+];
 
 export default function Home() {
   const [pref, setPref] = useState("東京都");
@@ -47,7 +64,14 @@ export default function Home() {
       <aside className="space-y-5">
         <section className="overflow-hidden rounded-[28px] bg-[#15335c] p-5 text-white shadow-xl shadow-slate-300/40"><p className="mb-3 text-xs font-bold tracking-wider text-blue-200">場所を選ぶ</p><div className="relative"><Search className="absolute left-3 top-3 text-slate-400" size={18}/><Input value={query} onChange={e=>setQuery(e.target.value)} placeholder="市区町村・施設名を検索" className="h-11 border-white/10 bg-white pl-10 text-slate-900 placeholder:text-slate-400"/></div><Button variant="outline" className="mt-3 w-full border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"><LocateFixed size={17}/>現在地の天気を見る</Button></section>
         <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-2 flex items-center justify-between"><div><p className="text-xs font-bold text-blue-600">日本地図</p><h2 className="font-black">エリアから選択</h2></div><MapPin className="text-blue-500"/></div>
-          <div className="relative mx-auto aspect-[1.12] w-full max-w-[390px]">{regions.map(r => <button key={r.name} onClick={()=>chooseRegion(r.name)} className={`absolute grid place-items-center rounded-xl border-2 text-[11px] font-black transition hover:-translate-y-1 hover:shadow-lg ${region===r.name ? "z-10 border-[#15335c] ring-4 ring-blue-100" : "border-white"}`} style={{left:`${r.x}%`,top:`${r.y}%`,width:`${r.w}%`,height:`${r.h}%`,background:r.color}}>{r.name}</button>)}<div className="absolute bottom-1 right-1 text-[10px] font-bold text-slate-300">JAPAN</div></div>
+          <div className="relative mx-auto aspect-[1.12] w-full max-w-[390px] overflow-hidden rounded-2xl bg-gradient-to-b from-sky-50 to-blue-50/40">
+            <svg viewBox="0 0 440 360" className="h-full w-full drop-shadow-sm" aria-label="日本地図">
+              <path d="M40 98 C76 78 119 70 158 78 M49 124 C92 103 135 99 173 105 M58 151 C99 135 139 132 182 139" fill="none" stroke="#d9ecf8" strokeWidth="2"/>
+              {regions.map(r => <g key={r.name} role="button" tabIndex={0} aria-label={`${r.name}を選択`} onClick={()=>chooseRegion(r.name)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" ") chooseRegion(r.name)}} className="cursor-pointer outline-none"><path d={mapPaths[r.name]} fill={r.color} stroke={region===r.name ? "#15335c" : "#ffffff"} strokeWidth={region===r.name ? 5 : 3} className="transition-all hover:brightness-95"/><text x={r.name==="北海道"?366:r.name==="東北"?316:r.name==="関東"?302:r.name==="中部"?253:r.name==="近畿"?202:r.name==="中国"?135:r.name==="四国"?158:r.name==="九州"?87:29} y={r.name==="北海道"?48:r.name==="東北"?125:r.name==="関東"?190:r.name==="中部"?179:r.name==="近畿"?201:r.name==="中国"?204:r.name==="四国"?239:r.name==="九州"?259:334} textAnchor="middle" className="pointer-events-none fill-slate-700 text-[11px] font-black">{r.name}</text></g>)}
+            </svg>
+            <div className="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-1 text-[10px] font-black text-slate-500 shadow-sm">首都圏・今日の天気</div>
+            {metro.map(m=><button key={m.name} onClick={()=>{setRegion("関東");setPref(m.name==="東京"?"東京都":`${m.name}県`)}} className={`absolute ${m.pos} z-20 flex min-w-[84px] items-center gap-1 rounded-xl border border-white bg-white/95 px-2 py-1.5 text-left shadow-lg transition hover:scale-105`}><span className="text-2xl">{m.icon}</span><span><b className="block text-[10px] leading-none">{m.name}</b><b className="text-sm">{m.temp}</b></span></button>)}
+          </div>
           <div className="mt-3 grid grid-cols-2 gap-2"><Select value={region} onValueChange={chooseRegion}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{regions.map(r=><SelectItem key={r.name} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select><Select value={pref} onValueChange={setPref}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{active.prefs.map(p=><SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
         </section>
       </aside>
