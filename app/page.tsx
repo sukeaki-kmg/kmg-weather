@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CloudRain, Compass, ExternalLink, LocateFixed, MapPin, Navigation, Search, ShieldCheck, Sun, Umbrella, Wind } from "lucide-react";
+import { CalendarDays, CloudRain, Compass, ExternalLink, LocateFixed, MapPin, Navigation, Search, ShieldCheck, Sun, Umbrella, Wind } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -48,6 +48,7 @@ export default function Home() {
   const [day, setDay] = useState("today");
   const [lastUpdated, setLastUpdated] = useState("");
   const [dateLabels, setDateLabels] = useState({ today: "--/--", tomorrow: "--/--" });
+  const [weeklyDates, setWeeklyDates] = useState(Array(7).fill("--/--"));
 
   useEffect(() => {
     const now = new Date();
@@ -67,6 +68,13 @@ export default function Home() {
       today: formatDate(now),
       tomorrow: formatDate(new Date(now.getTime() + 24 * 60 * 60 * 1000)),
     });
+    const formatWeekDate = (date: Date) => new Intl.DateTimeFormat("ja-JP", {
+      timeZone: "Asia/Tokyo",
+      month: "numeric",
+      day: "numeric",
+      weekday: "short",
+    }).format(date);
+    setWeeklyDates(Array.from({ length: 7 }, (_, i) => formatWeekDate(new Date(now.getTime() + i * 24 * 60 * 60 * 1000))));
     const refreshTimer = window.setInterval(() => window.location.reload(), 60 * 60 * 1000);
     return () => window.clearInterval(refreshTimer);
   }, []);
@@ -85,6 +93,15 @@ export default function Home() {
       chance: Math.min(100, base[i] + ((factor + i) % 3) * 5),
     }));
   }, [factor, tomorrow]);
+  const weeklyForecast = useMemo(() => weeklyDates.map((date, dayIndex) => {
+    const highs = providers.map((_, providerIndex) => 27 + ((factor + dayIndex + providerIndex) % 5));
+    const lows = providers.map((_, providerIndex) => 20 + ((factor + dayIndex + providerIndex * 2) % 4));
+    const rains = providers.map((_, providerIndex) => Math.min(90, 20 + ((factor * 7 + dayIndex * 13 + providerIndex * 10) % 60)));
+    const average = (values: number[]) => Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+    const rain = Math.round(average(rains) / 10) * 10;
+    const condition = rain >= 60 ? { label: "雨", icon: "🌧️" } : rain >= 40 ? { label: "くもり", icon: "☁️" } : { label: "晴れ", icon: "☀️" };
+    return { date, high: average(highs), low: average(lows), rain, ...condition };
+  }), [factor, weeklyDates]);
   const active = regions.find(r => r.name === region) ?? regions[2];
   const chooseRegion = (name: string) => { const r = regions.find(x => x.name === name)!; setRegion(name); setPref(r.prefs[0]); };
 
@@ -115,6 +132,10 @@ export default function Home() {
           <div className="mt-5 overflow-x-auto pb-2"><div className="min-w-[620px]"><div className="grid h-48 grid-cols-8 items-end gap-2 border-b border-slate-200 px-1">{hourlyRain.map(h=><div key={h.time} className="flex h-full flex-col items-center justify-end"><b className="mb-1 text-sm text-blue-700">{h.chance}%</b><div className="w-full max-w-12 rounded-t-md bg-gradient-to-t from-blue-600 to-sky-300 transition-all" style={{height:`${Math.max(8,h.chance)}%`}}/></div>)}</div>
           <div className="grid grid-cols-8 gap-2 px-1 pt-2 text-center text-sm font-bold text-slate-600">{hourlyRain.map(h=><span key={h.time}>{h.time}</span>)}</div>
           <div className="mt-4 grid grid-cols-8 overflow-hidden rounded-xl border border-slate-200 text-center text-sm">{hourlyRain.map(h=><div key={h.time} className="border-r border-slate-100 px-1 py-2 last:border-0"><span className="block text-slate-500">{h.time}</span><b className="mt-0.5 block text-blue-700">{h.chance}%</b></div>)}</div></div></div>
+        </section>
+        <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-6"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-blue-600">7-DAY FORECAST</p><h2 className="text-xl font-black">週間天気</h2><p className="mt-1 text-sm text-slate-500">{pref}・3つの予報データの平均</p></div><CalendarDays className="mt-1 text-blue-500" size={25}/></div>
+          <div className="mt-5 overflow-x-auto pb-2"><div className="grid min-w-[770px] grid-cols-7 gap-2">{weeklyForecast.map((forecast, index)=><article key={`${forecast.date}-${index}`} className={`rounded-2xl border p-3 text-center ${index === 0 ? "border-blue-400 bg-blue-50" : "border-slate-200 bg-slate-50/70"}`}><div className="text-sm font-black text-slate-700">{index === 0 ? "今日" : forecast.date}</div><div className="my-3 text-4xl leading-none" role="img" aria-label={forecast.label}>{forecast.icon}</div><div className="text-sm font-bold text-slate-600">{forecast.label}</div><div className="mt-3 text-lg font-black"><span className="text-rose-500">{forecast.high}°</span><span className="mx-1 text-slate-300">/</span><span className="text-blue-500">{forecast.low}°</span></div><div className="mt-2 rounded-lg bg-white px-1 py-2 text-sm font-bold text-blue-700">降水 {forecast.rain}%</div></article>)}</div></div>
+          <p className="mt-2 text-xs leading-5 text-slate-400">最高・最低気温と降水確率は、3つの予報値を単純平均して表示しています。</p>
         </section>
         <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5 md:p-6"><div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm font-bold text-blue-600 sm:text-xs">FORECAST SOURCES · {day === "today" ? "TODAY" : "TOMORROW"}</p><h2 className="text-xl font-black">3つの予報を比較</h2></div><p className="text-xs font-medium text-slate-500" aria-live="polite">最終更新 {lastUpdated || "--:--"} · 1時間ごとに自動更新</p></div>
           <div className="mt-4 grid gap-3 sm:hidden">{rows.map(r=><article key={r.name} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-center justify-between gap-3"><div><span className="mr-2 inline-block size-3 rounded-full" style={{background:r.tint,border:"1px solid #94a3b8"}}/><b className="text-base">{r.name}</b></div><span className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold ${tomorrow ? "bg-amber-50 text-amber-800" : "bg-sky-50 text-sky-800"}`}><span className="text-2xl" role="img" aria-label={r.weather}>{tomorrow ? "🌤️" : "🌦️"}</span>{r.weather}</span></div><div className="mt-4 grid grid-cols-3 gap-2 text-center"><div className="rounded-xl bg-slate-50 p-2"><span className="block text-xs text-slate-500">最高 / 最低</span><b className="text-base"><span className="text-rose-500">{r.hi}°</span> / <span className="text-blue-500">{r.lo}°</span></b></div><div className="rounded-xl bg-slate-50 p-2"><span className="block text-xs text-slate-500">降水確率</span><b className="text-lg text-blue-700">{r.rain}%</b></div><div className="rounded-xl bg-slate-50 p-2"><span className="block text-xs text-slate-500">風速</span><b className="text-base">{r.wind} m/s</b></div></div></article>)}</div>
