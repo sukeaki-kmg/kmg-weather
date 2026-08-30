@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CloudRain, Compass, ExternalLink, LocateFixed, MapPin, Navigation, Search, ShieldCheck, Sun, Umbrella, Wind } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +46,19 @@ export default function Home() {
   const [region, setRegion] = useState("関東");
   const [query, setQuery] = useState("");
   const [day, setDay] = useState("today");
+  const [lastUpdated, setLastUpdated] = useState("");
+
+  useEffect(() => {
+    const formatUpdateTime = () => new Intl.DateTimeFormat("ja-JP", {
+      timeZone: "Asia/Tokyo",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date());
+
+    setLastUpdated(formatUpdateTime());
+    const refreshTimer = window.setInterval(() => window.location.reload(), 60 * 60 * 1000);
+    return () => window.clearInterval(refreshTimer);
+  }, []);
   const factor = seed[pref] ?? pref.charCodeAt(0) % 6;
   const tomorrow = day === "tomorrow" ? 1 : 0;
   const mapCities = useMemo(() => cities.map((c, i) => ({
@@ -92,7 +105,7 @@ export default function Home() {
           <div className="grid grid-cols-8 gap-2 px-1 pt-2 text-center text-sm font-bold text-slate-600">{hourlyRain.map(h=><span key={h.time}>{h.time}</span>)}</div>
           <div className="mt-4 grid grid-cols-8 overflow-hidden rounded-xl border border-slate-200 text-center text-sm">{hourlyRain.map(h=><div key={h.time} className="border-r border-slate-100 px-1 py-2 last:border-0"><span className="block text-slate-500">{h.time}</span><b className="mt-0.5 block text-blue-700">{h.chance}%</b></div>)}</div></div></div>
         </section>
-        <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5 md:p-6"><div className="flex items-end justify-between"><div><p className="text-sm font-bold text-blue-600 sm:text-xs">FORECAST SOURCES · {day === "today" ? "TODAY" : "TOMORROW"}</p><h2 className="text-xl font-black">3つの予報を比較</h2></div><p className="hidden text-xs text-slate-400 sm:block">最終更新 12:00</p></div>
+        <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5 md:p-6"><div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm font-bold text-blue-600 sm:text-xs">FORECAST SOURCES · {day === "today" ? "TODAY" : "TOMORROW"}</p><h2 className="text-xl font-black">3つの予報を比較</h2></div><p className="text-xs font-medium text-slate-500" aria-live="polite">最終更新 {lastUpdated || "--:--"} · 1時間ごとに自動更新</p></div>
           <div className="mt-4 grid gap-3 sm:hidden">{rows.map(r=><article key={r.name} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-center justify-between gap-3"><div><span className="mr-2 inline-block size-3 rounded-full" style={{background:r.tint,border:"1px solid #94a3b8"}}/><b className="text-base">{r.name}</b></div><span className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold ${tomorrow ? "bg-amber-50 text-amber-800" : "bg-sky-50 text-sky-800"}`}><span className="text-2xl" role="img" aria-label={r.weather}>{tomorrow ? "🌤️" : "🌦️"}</span>{r.weather}</span></div><div className="mt-4 grid grid-cols-3 gap-2 text-center"><div className="rounded-xl bg-slate-50 p-2"><span className="block text-xs text-slate-500">最高 / 最低</span><b className="text-base"><span className="text-rose-500">{r.hi}°</span> / <span className="text-blue-500">{r.lo}°</span></b></div><div className="rounded-xl bg-slate-50 p-2"><span className="block text-xs text-slate-500">降水確率</span><b className="text-lg text-blue-700">{r.rain}%</b></div><div className="rounded-xl bg-slate-50 p-2"><span className="block text-xs text-slate-500">風速</span><b className="text-base">{r.wind} m/s</b></div></div></article>)}</div>
           <div className="mt-5 hidden overflow-x-auto sm:block"><table className="w-full min-w-[680px] text-left"><thead><tr className="border-b text-xs text-slate-400"><th className="pb-3">予報元</th><th className="pb-3">天気</th><th className="pb-3">最高 / 最低</th><th className="pb-3">降水確率</th><th className="pb-3">風速</th></tr></thead><tbody>{rows.map(r=><tr key={r.name} className="border-b border-slate-100 last:border-0"><td className="py-4"><span className="mr-3 inline-block size-3 rounded-full" style={{background:r.tint,border:"1px solid #94a3b8"}}/><b>{r.name}</b></td><td className="py-4"><span className={`inline-flex min-w-36 items-center gap-3 rounded-xl px-3 py-2 font-bold ${tomorrow ? "bg-amber-50 text-amber-800" : "bg-sky-50 text-sky-800"}`}><span className="text-3xl" role="img" aria-label={tomorrow ? "晴れ時々くもり" : "くもりのち雨"}>{tomorrow ? "🌤️" : "🌦️"}</span>{r.weather}</span></td><td className="py-4 font-bold"><span className="text-rose-500">{r.hi}°</span> / <span className="text-blue-500">{r.lo}°</span></td><td className="py-4"><div className="flex items-center gap-3"><Progress value={r.rain} className="h-2 w-20"/><b>{r.rain}%</b></div></td><td className="py-4">{r.wind} m/s</td></tr>)}</tbody></table></div></section>
         <section className="grid gap-3 md:grid-cols-3">{links.map((l,i)=><a key={l} href={i===0?"https://weathernews.jp/":i===1?"https://weather.yahoo.co.jp/weather/":"https://tenki.jp/"} target="_blank" rel="noreferrer" className="group flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 font-bold shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md"><span><span className="mb-1 block text-[10px] font-bold text-slate-400">詳しい予報を見る</span>{l}</span><ExternalLink size={17} className="text-slate-400 group-hover:text-blue-500"/></a>)}</section>
