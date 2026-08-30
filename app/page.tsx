@@ -47,8 +47,15 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [day, setDay] = useState("today");
   const [lastUpdated, setLastUpdated] = useState("");
+  const [dateLabels, setDateLabels] = useState({ today: "--/--", tomorrow: "--/--" });
 
   useEffect(() => {
+    const now = new Date();
+    const formatDate = (date: Date) => new Intl.DateTimeFormat("ja-JP", {
+      timeZone: "Asia/Tokyo",
+      month: "numeric",
+      day: "numeric",
+    }).format(date);
     const formatUpdateTime = () => new Intl.DateTimeFormat("ja-JP", {
       timeZone: "Asia/Tokyo",
       hour: "2-digit",
@@ -56,6 +63,10 @@ export default function Home() {
     }).format(new Date());
 
     setLastUpdated(formatUpdateTime());
+    setDateLabels({
+      today: formatDate(now),
+      tomorrow: formatDate(new Date(now.getTime() + 24 * 60 * 60 * 1000)),
+    });
     const refreshTimer = window.setInterval(() => window.location.reload(), 60 * 60 * 1000);
     return () => window.clearInterval(refreshTimer);
   }, []);
@@ -96,7 +107,7 @@ export default function Home() {
         </section>
       </aside>
       <div className="min-w-0 space-y-5">
-        <Tabs value={day} onValueChange={setDay} className="w-full"><TabsList className="grid h-12 w-full grid-cols-2 rounded-2xl bg-white p-1 shadow-sm"><TabsTrigger value="today" className="rounded-xl text-sm font-black">今日 <span className="ml-2 text-xs font-medium text-slate-400">8/29</span></TabsTrigger><TabsTrigger value="tomorrow" className="rounded-xl text-sm font-black">明日 <span className="ml-2 text-xs font-medium text-slate-400">8/30</span></TabsTrigger></TabsList></Tabs>
+        <Tabs value={day} onValueChange={setDay} className="w-full"><TabsList className="grid h-12 w-full grid-cols-2 rounded-2xl bg-white p-1 shadow-sm"><TabsTrigger value="today" className="rounded-xl text-sm font-black">今日 <span className="ml-2 text-xs font-medium text-slate-400">{dateLabels.today}</span></TabsTrigger><TabsTrigger value="tomorrow" className="rounded-xl text-sm font-black">明日 <span className="ml-2 text-xs font-medium text-slate-400">{dateLabels.tomorrow}</span></TabsTrigger></TabsList></Tabs>
         <section className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#2872ff] via-[#438cf8] to-[#79b7f6] p-5 text-white shadow-xl shadow-blue-200/70 sm:rounded-[32px] sm:p-6 md:p-8"><div className="absolute -right-10 -top-20 size-64 rounded-full bg-white/10"/><div className="relative flex flex-col justify-between gap-6 md:flex-row md:items-center"><div><div className="flex flex-wrap items-center gap-2 text-base font-bold text-blue-100 sm:text-sm"><Navigation size={18}/>{pref} · {day === "today" ? "今日" : "明日"} <span className="rounded-full bg-white/20 px-2 py-1 text-xs">デモデータ</span></div><h2 className="mt-4 text-[28px] font-black leading-tight sm:text-3xl md:text-4xl">{tomorrow ? "日中は晴れて過ごしやすい" : "午後から雨の可能性が高い"}</h2><p className="mt-3 text-base leading-7 text-blue-50">{tomorrow ? "朝晩との気温差に注意。傘の出番は少なそうです。" : "外出は14時までがおすすめ。折りたたみ傘があると安心です。"}</p></div><div className="flex items-center justify-center gap-4 md:justify-start md:pr-6"><div className={`grid size-24 shrink-0 place-items-center rounded-full shadow-inner ${tomorrow ? "bg-amber-100" : "bg-sky-100"}`}><span className="text-6xl" role="img" aria-label={tomorrow ? "晴れ" : "雨"}>{tomorrow ? "☀️" : "🌧️"}</span></div><div><div className="text-6xl font-light">{30 + tomorrow + factor%2}°</div><div className="mt-1 text-base font-bold">体感温度 {31 + tomorrow + factor%2}°</div></div></div></div>
           <div className="relative mt-7 grid grid-cols-2 gap-3 md:grid-cols-4">{[{i:<Umbrella key="i"/>,l:"傘推奨度",v:tomorrow ? `${28+factor}%` : `${82+factor}%`},{i:<ShieldCheck key="i"/>,l:"予報一致度",v:"2 / 3"},{i:<Wind key="i"/>,l:"最大風速",v:`${4+factor%3} m/s`},{i:<Sun key="i"/>,l:"紫外線",v:tomorrow ? "強い" : "やや強い"}].map(x=><div key={x.l} className="rounded-2xl bg-white/15 p-3 backdrop-blur"><div className="flex items-center gap-2 text-sm text-blue-50">{x.i}{x.l}</div><div className="mt-1 text-xl font-black">{x.v}</div></div>)}</div>
         </section>
