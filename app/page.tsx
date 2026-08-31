@@ -57,6 +57,7 @@ export default function Home() {
   const [dateLabels, setDateLabels] = useState({ today: "--/--", tomorrow: "--/--" });
   const [weeklyDates, setWeeklyDates] = useState(Array(7).fill("--/--"));
   const [forecast, setForecast] = useState<any>(null);
+  const [cityForecasts, setCityForecasts] = useState<any[]>([]);
   const [forecastError, setForecastError] = useState("");
 
   useEffect(() => {
@@ -101,9 +102,30 @@ export default function Home() {
       .then(data => { setForecast(data); setLastUpdated(new Intl.DateTimeFormat("ja-JP", { timeZone:"Asia/Tokyo", hour:"2-digit", minute:"2-digit" }).format(new Date())); })
       .catch(() => { setForecast(null); setForecastError("予報データを取得できませんでした。しばらくしてから再読み込みしてください。"); });
   }, [pref]);
+  useEffect(() => {
+    const cityCoordinates = cities.map(city => coordinates[city.pref]);
+    const params = new URLSearchParams({
+      latitude: cityCoordinates.map(point => point[0]).join(","),
+      longitude: cityCoordinates.map(point => point[1]).join(","),
+      timezone: "Asia/Tokyo", forecast_days: "2", models: providers.map(provider => provider.key).join(","),
+      daily: "weather_code,temperature_2m_max",
+    });
+    fetch(`https://api.open-meteo.com/v1/forecast?${params}`)
+      .then(response => { if (!response.ok) throw new Error("city forecast request failed"); return response.json(); })
+      .then(data => setCityForecasts(Array.isArray(data) ? data : [data]))
+      .catch(() => setCityForecasts([]));
+  }, []);
   const tomorrow = day === "tomorrow" ? 1 : 0;
-  const mapCities = cities;
-  const weatherInfo = (code: number | null) => code == null ? { weather:"取得なし", icon:"—" } : code <= 1 ? { weather:"晴れ", icon:"☀️" } : code <= 3 ? { weather:"くもり", icon:"☁️" } : code <= 57 ? { weather:"霧・霧雨", icon:"🌫️" } : code <= 67 ? { weather:"雨", icon:"🌧️" } : code <= 77 ? { weather:"雪", icon:"🌨️" } : code <= 82 ? { weather:"にわか雨", icon:"🌦️" } : { weather:"雷雨", icon:"⛈️" };
+  const mapCities = useMemo(() => cities.map((city, cityIndex) => {
+    const cityData = cityForecasts[cityIndex]?.daily;
+    const modelValues = (name: string) => providers.map(provider => cityData?.[`${name}_${provider.key}`]?.[tomorrow]).filter((item: unknown): item is number => typeof item === "number");
+    const temperatures = modelValues("temperature_2m_max");
+    const codes = modelValues("weather_code");
+    const conditions = codes.map(weatherInfo);
+    const condition = conditions.length ? conditions.sort((a,b) => conditions.filter(item => item.weather === b.weather).length - conditions.filter(item => item.weather === a.weather).length)[0] : { weather:"取得中", icon:"…" };
+    return { ...city, ...condition, temperature: temperatures.length ? Math.round(temperatures.reduce((a,b)=>a+b,0) / temperatures.length) : null };
+  }), [cityForecasts, tomorrow]);
+  function weatherInfo(code: number | null) { return code == null ? { weather:"取得なし", icon:"—" } : code <= 1 ? { weather:"晴れ", icon:"☀️" } : code <= 3 ? { weather:"くもり", icon:"☁️" } : code <= 57 ? { weather:"霧・霧雨", icon:"🌫️" } : code <= 67 ? { weather:"雨", icon:"🌧️" } : code <= 77 ? { weather:"雪", icon:"🌨️" } : code <= 82 ? { weather:"にわか雨", icon:"🌦️" } : { weather:"雷雨", icon:"⛈️" }; }
   const value = (name: string, model: string, index: number) => forecast?.daily?.[`${name}_${model}`]?.[index] ?? null;
   const rows = useMemo(() => providers.map(p => ({
     ...p, ...weatherInfo(value("weather_code", p.key, tomorrow)),
@@ -142,10 +164,11 @@ export default function Home() {
         <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[28px] sm:p-5"><div className="mb-3 flex items-center justify-between"><div><p className="text-sm font-bold text-blue-600 md:text-xs">予報地点を選択</p><h2 className="text-xl font-black sm:text-base">主要12都市から選ぶ</h2></div><MapPin className="shrink-0 text-blue-500"/></div>
           <div className="relative mx-auto aspect-square w-full max-w-[600px] overflow-hidden rounded-2xl bg-gradient-to-b from-sky-50 to-blue-50/40">
             <img src="/japan-prefectures.svg" alt="47都道府県の境界を表示した日本地図" className="h-full w-full object-contain p-1 opacity-90 sm:p-3"/>
-            {mapCities.map(c=><button key={c.name} onClick={()=>{setRegion(c.region);setPref(c.pref)}} style={{left:`${c.left}%`,top:`${c.top}%`}} className="absolute z-20 hidden -translate-x-1/2 rounded-lg border border-white bg-white/95 px-2 py-1.5 text-sm font-black shadow-md transition hover:z-30 hover:scale-105 sm:block">{c.name}</button>)}
+            {mapCities.map(c=><button key={c.name} onClick={()=>{setRegion(c.region);setPref(c.pref)}} style={{left:`${c.left}%`,top:`${c.top}%`}} className="absolute z-20 hidden -translate-x-1/2 items-center gap-1 rounded-lg border border-white bg-white/95 px-1.5 py-1 text-left shadow-md transition hover:z-30 hover:scale-105 sm:flex"><span className="text-2xl leading-none">{c.icon}</span><span><b className="block text-[11px] leading-none">{c.name}</b><b className="text-sm font-black text-blue-700">{c.temperature == null ? "--" : `${c.temperature}°`}</b></span></button>)}
             <span className="absolute bottom-2 right-3 text-[10px] font-medium text-slate-500">地図: Geolonia / GFDL</span>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:hidden">{mapCities.map(c=><button key={c.name} onClick={()=>{setRegion(c.region);setPref(c.pref)}} className={`min-h-12 rounded-xl border p-2 text-center text-base font-black ${pref === c.pref ? "border-blue-500 bg-blue-50 text-blue-800" : "border-slate-200 bg-white"}`}>{c.name}</button>)}</div>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:hidden">{mapCities.map(c=><button key={c.name} onClick={()=>{setRegion(c.region);setPref(c.pref)}} className={`flex min-h-16 items-center gap-2 rounded-xl border p-2 text-left ${pref === c.pref ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white"}`}><span className="text-3xl leading-none">{c.icon}</span><span><b className="block text-sm font-black">{c.name}</b><b className="text-lg font-black text-blue-700">{c.temperature == null ? "--" : `${c.temperature}°`}</b></span></button>)}</div>
+          <p className="mt-2 text-center text-xs text-slate-400">地図の天気・気温も3モデルの実データ平均</p>
           <div className="mt-4 grid grid-cols-2 gap-2"><Select value={region} onValueChange={chooseRegion}><SelectTrigger className="h-12 text-base"><SelectValue/></SelectTrigger><SelectContent>{regions.map(r=><SelectItem key={r.name} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select><Select value={pref} onValueChange={setPref}><SelectTrigger className="h-12 text-base"><SelectValue/></SelectTrigger><SelectContent>{active.prefs.map(p=><SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
         </section>
       </aside>
