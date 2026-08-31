@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CalendarDays, CloudRain, Compass, ExternalLink, LocateFixed, MapPin, Navigation, Search, ShieldCheck, Umbrella, Wind } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { AlertTriangle, CalendarDays, CloudRain, Compass, ExternalLink, MapPin, Navigation, ShieldCheck, Umbrella, Wind } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -52,7 +50,6 @@ const cities = [
 export default function Home() {
   const [pref, setPref] = useState("東京都");
   const [region, setRegion] = useState("関東");
-  const [query, setQuery] = useState("");
   const [day, setDay] = useState("today");
   const [lastUpdated, setLastUpdated] = useState("");
   const [dateLabels, setDateLabels] = useState({ today: "--/--", tomorrow: "--/--" });
@@ -175,7 +172,6 @@ export default function Home() {
     </div></header>
     <div className="mx-auto grid w-full max-w-[1680px] gap-5 p-3 sm:p-4 md:p-8 xl:grid-cols-[minmax(520px,620px)_minmax(0,1fr)]">
       <aside className="min-w-0 space-y-5">
-        <section className="overflow-hidden rounded-[28px] bg-[#15335c] p-5 text-white shadow-xl shadow-slate-300/40"><p className="mb-3 text-sm font-bold tracking-wider text-blue-200 md:text-xs">場所を選ぶ</p><div className="relative"><Search className="absolute left-3 top-3 text-slate-400" size={18}/><Input value={query} onChange={e=>setQuery(e.target.value)} placeholder="市区町村・施設名を検索" className="h-12 border-white/10 bg-white pl-10 text-base text-slate-900 placeholder:text-slate-400"/></div><Button variant="outline" className="mt-3 h-12 w-full border-white/20 bg-white/10 text-base text-white hover:bg-white/20 hover:text-white"><LocateFixed size={18}/>現在地の天気を見る</Button></section>
         <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[28px] sm:p-5"><div className="mb-3 flex items-center justify-between"><div><p className="text-sm font-bold text-blue-600 md:text-xs">予報地点を選択</p><h2 className="text-xl font-black sm:text-base">主要12都市から選ぶ</h2></div><MapPin className="shrink-0 text-blue-500"/></div>
           <div className="relative mx-auto aspect-square w-full max-w-[600px] overflow-hidden rounded-2xl bg-gradient-to-b from-sky-50 to-blue-50/40">
             <img src="/japan-prefectures.svg" alt="47都道府県の境界を表示した日本地図" className="h-full w-full object-contain p-1 opacity-90 sm:p-3"/>
