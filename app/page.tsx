@@ -92,7 +92,7 @@ export default function Home() {
       latitude: String(latitude), longitude: String(longitude), timezone: "Asia/Tokyo", forecast_days: "7",
       models: providers.map(provider => provider.key).join(","),
       daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max",
-      hourly: "precipitation_probability",
+      hourly: "precipitation_probability,precipitation,wind_speed_10m",
     });
     setForecastError("");
     fetch(`https://api.open-meteo.com/v1/forecast?${params}`)
@@ -132,9 +132,20 @@ export default function Home() {
   })), [forecast, tomorrow]);
   const hourlyRain = useMemo(() => {
     const offset = tomorrow * 24;
-    return [0,3,6,9,12,15,18,21].map(hour => {
-      const chances = providers.map(p => forecast?.hourly?.[`precipitation_probability_${p.key}`]?.[offset + hour]).filter((v: unknown): v is number => typeof v === "number");
-      return { time:`${hour}時`, chance: chances.length ? Math.round(chances.reduce((a,b)=>a+b,0) / chances.length) : 0 };
+    const modelAverage = (name: string, index: number, digits = 0) => {
+      const values = providers.map(p => forecast?.hourly?.[`${name}_${p.key}`]?.[index]).filter((v: unknown): v is number => typeof v === "number");
+      if (!values.length) return 0;
+      const average = values.reduce((a,b)=>a+b,0) / values.length;
+      return Number(average.toFixed(digits));
+    };
+    return Array.from({ length: 24 }, (_, hour) => {
+      const index = offset + hour;
+      return {
+        time:`${hour}時`,
+        chance: modelAverage("precipitation_probability", index),
+        precipitation: modelAverage("precipitation", index, 1),
+        wind: modelAverage("wind_speed_10m", index, 1),
+      };
     });
   }, [forecast, tomorrow]);
   const weeklyForecast = useMemo(() => weeklyDates.map((date, dayIndex) => {
@@ -158,6 +169,8 @@ export default function Home() {
   const averageWind = (() => { const values = rows.map(row => row.wind).filter((v): v is number => typeof v === "number"); return values.length ? Math.round(values.reduce((a,b)=>a+b,0) / values.length) : null; })();
   const umbrellaHours = forecast ? hourlyRain.filter(item => item.chance >= 50) : [];
   const umbrellaAdvice = !forecast ? "降水データを取得中…" : umbrellaHours.length === 0 ? "傘なしで過ごせそうです" : `${umbrellaHours[0].time}〜${umbrellaHours.at(-1)?.time}は傘推奨`;
+  const dayRainTotal = Number(hourlyRain.reduce((sum, item) => sum + item.precipitation, 0).toFixed(1));
+  const dayMaxWind = Number(Math.max(...hourlyRain.map(item => item.wind)).toFixed(1));
   const officeCode = `${String(prefectures.indexOf(pref) + 1).padStart(2, "0")}0000`;
   const [selectedLatitude, selectedLongitude] = coordinates[pref] ?? coordinates["東京都"];
   const warningUrl = `https://www.jma.go.jp/bosai/warning/#area_type=offices&area_code=${officeCode}`;
@@ -191,11 +204,12 @@ export default function Home() {
         <section className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#2872ff] via-[#438cf8] to-[#79b7f6] p-5 text-white shadow-xl shadow-blue-200/70 sm:rounded-[32px] sm:p-6 md:p-8"><div className="absolute -right-10 -top-20 size-64 rounded-full bg-white/10"/><div className="relative flex flex-col justify-between gap-6 md:flex-row md:items-center"><div><div className="flex flex-wrap items-center gap-2 text-base font-bold text-blue-100 sm:text-sm"><Navigation size={18}/>{pref} · {day === "today" ? "今日" : "明日"} <span className="rounded-full bg-white/20 px-2 py-1 text-xs">実予報モデル</span></div><h2 className="mt-4 text-[28px] font-black leading-tight sm:text-3xl md:text-4xl">{forecastError || (forecast ? `${selectedForecast?.weather ?? "取得中"}の予報` : "予報を取得しています…")}</h2><p className="mt-3 text-base leading-7 text-blue-50">JMA・NOAA GFS・ECMWF IFSの最新値を比較しています。</p></div><div className="flex items-center justify-center gap-4 md:justify-start md:pr-6"><div className="grid size-24 shrink-0 place-items-center rounded-full bg-white/90 shadow-inner"><span className="text-6xl" role="img" aria-label={selectedForecast?.weather ?? "取得中"}>{selectedForecast?.icon ?? "…"}</span></div><div><div className="text-6xl font-light">{selectedForecast?.high ?? "--"}°</div><div className="mt-1 text-base font-bold">最低 {selectedForecast?.low ?? "--"}°</div></div></div></div>
           <div className="relative mt-7 grid grid-cols-3 gap-3">{[{i:<Umbrella key="i"/>,l:"降水確率",v:selectedForecast?.rain == null ? "--" : `${selectedForecast.rain}%`},{i:<ShieldCheck key="i"/>,l:"天気の一致",v:`${agreement} / 3`},{i:<Wind key="i"/>,l:"最大風速平均",v:averageWind == null ? "--" : `${averageWind} km/h`}].map(x=><div key={x.l} className="rounded-2xl bg-white/15 p-3 backdrop-blur"><div className="flex items-center gap-2 text-sm text-blue-50">{x.i}{x.l}</div><div className="mt-1 text-xl font-black">{x.v}</div></div>)}</div>
         </section>
-        <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-6"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-blue-600">HOURLY RAIN · {day === "today" ? "TODAY" : "TOMORROW"}</p><h2 className="text-xl font-black">時間別の降水確率</h2><p className="mt-1 text-xs text-slate-400">{pref}・取得できた実予報モデルの平均</p></div><CloudRain className="mt-1 text-blue-500" size={25}/></div>
+        <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-6"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-blue-600">HOURLY RAIN · {day === "today" ? "TODAY" : "TOMORROW"}</p><h2 className="text-xl font-black">1時間ごとの雨と風</h2><p className="mt-1 text-xs text-slate-400">{pref}・取得できた実予報モデルの平均</p></div><CloudRain className="mt-1 text-blue-500" size={25}/></div>
           <div className={`mt-4 flex items-center gap-3 rounded-2xl border p-4 ${umbrellaHours.length ? "border-blue-200 bg-blue-50 text-blue-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}><span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white text-blue-600 shadow-sm"><Umbrella size={24}/></span><div><p className="text-xs font-bold opacity-70">傘のアドバイス</p><p className="text-lg font-black">{umbrellaAdvice}</p></div></div>
-          <div className="mt-5 overflow-x-auto pb-2"><div className="min-w-[620px]"><div className="grid h-48 grid-cols-8 items-end gap-2 border-b border-slate-200 px-1">{hourlyRain.map(h=><div key={h.time} className="flex h-full flex-col items-center justify-end"><b className="mb-1 text-sm text-blue-700">{h.chance}%</b><div className="w-full max-w-12 rounded-t-md bg-gradient-to-t from-blue-600 to-sky-300 transition-all" style={{height:`${Math.max(8,h.chance)}%`}}/></div>)}</div>
-          <div className="grid grid-cols-8 gap-2 px-1 pt-2 text-center text-sm font-bold text-slate-600">{hourlyRain.map(h=><span key={h.time}>{h.time}</span>)}</div>
-          <div className="mt-4 grid grid-cols-8 overflow-hidden rounded-xl border border-slate-200 text-center text-sm">{hourlyRain.map(h=><div key={h.time} className="border-r border-slate-100 px-1 py-2 last:border-0"><span className="block text-slate-500">{h.time}</span><b className="mt-0.5 block text-blue-700">{h.chance}%</b></div>)}</div></div></div>
+          <div className="mt-3 grid grid-cols-2 gap-3"><div className="rounded-2xl bg-sky-50 p-3 text-center"><span className="block text-xs font-bold text-slate-500">予想総降水量</span><b className="mt-1 block text-xl text-blue-700">{forecast ? `${dayRainTotal} mm` : "--"}</b></div><div className="rounded-2xl bg-slate-50 p-3 text-center"><span className="block text-xs font-bold text-slate-500">最大風速（平均値）</span><b className="mt-1 block text-xl text-slate-800">{forecast ? `${dayMaxWind} km/h` : "--"}</b></div></div>
+          <div className="mt-5 overflow-x-auto pb-2"><div className="min-w-[1440px]"><div className="grid h-44 grid-cols-[repeat(24,minmax(0,1fr))] items-end gap-1 border-b border-slate-200 px-1">{hourlyRain.map(h=><div key={h.time} className="flex h-full flex-col items-center justify-end"><b className="mb-1 text-[11px] text-blue-700">{h.chance}%</b><div className="w-full max-w-10 rounded-t bg-gradient-to-t from-blue-600 to-sky-300 transition-all" style={{height:`${Math.max(6,h.chance)}%`}}/></div>)}</div>
+          <div className="grid grid-cols-[repeat(24,minmax(0,1fr))] gap-1 px-1 pt-2 text-center text-xs font-bold text-slate-600">{hourlyRain.map(h=><span key={h.time}>{h.time}</span>)}</div>
+          <div className="mt-4 grid grid-cols-[repeat(24,minmax(0,1fr))] overflow-hidden rounded-xl border border-slate-200 text-center text-xs">{hourlyRain.map(h=><div key={h.time} className="border-r border-slate-100 px-1 py-2 last:border-0"><span className="block font-bold text-slate-600">{h.time}</span><span className="mt-1 block text-[10px] text-slate-400">降水確率</span><b className="block text-blue-700">{h.chance}%</b><span className="mt-1 block text-[10px] text-slate-400">降水量</span><b className="block text-sky-700">{h.precipitation}mm</b><span className="mt-1 block text-[10px] text-slate-400">風速</span><b className="block text-slate-700">{h.wind}km/h</b></div>)}</div></div></div>
         </section>
         <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-6"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-blue-600">7-DAY FORECAST</p><h2 className="text-xl font-black">週間天気</h2><p className="mt-1 text-sm text-slate-500">{pref}・JMA / GFS / ECMWFの平均予報</p></div><CalendarDays className="mt-1 text-blue-500" size={25}/></div>
           <div className="mt-5 overflow-x-auto pb-2"><div className="grid min-w-[840px] grid-cols-7 gap-3">{weeklyForecast.map((item, index)=><article key={`${item.date}-${index}`} className={`min-w-0 overflow-hidden rounded-2xl border px-2 py-3 text-center ${index === 0 ? "border-blue-400 bg-blue-50" : "border-slate-200 bg-slate-50/70"}`}><div className="text-sm font-black text-slate-700">{index === 0 ? "今日" : item.date}</div><div className="my-3 text-4xl leading-none" role="img" aria-label={item.weather}>{item.icon}</div><div className="text-sm font-bold text-slate-600">{item.weather}</div><div className="mt-3 grid gap-1 rounded-xl bg-white px-2 py-2 text-sm font-black"><div className="flex items-center justify-between gap-1 whitespace-nowrap"><span className="text-[11px] text-slate-400">最高</span><span className="text-base text-rose-500">{item.high ?? "--"}°</span></div><div className="flex items-center justify-between gap-1 whitespace-nowrap"><span className="text-[11px] text-slate-400">最低</span><span className="text-base text-blue-500">{item.low ?? "--"}°</span></div></div><div className="mt-2 rounded-lg bg-white px-1 py-2 text-sm font-bold text-blue-700">降水 {item.rain == null ? "--" : `${item.rain}%`}</div><div className={`mt-2 rounded-full px-1 py-1.5 text-[11px] font-black ${item.confidence.style}`}>{item.confidence.label}</div></article>)}</div></div>
