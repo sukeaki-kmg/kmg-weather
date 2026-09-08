@@ -381,5 +381,8 @@ export default function Home() {
         <p className="px-2 text-center text-sm leading-6 text-slate-500 sm:text-xs">予報データ提供: Open-Meteo（JMA・NOAA GFS・ECMWF IFS・DWD ICON Global）。各都道府県庁所在地付近のモデル予報を集計した参考情報です。警報・避難情報は必ず気象庁や自治体の最新情報をご確認ください。</p>
       </div>
     </div>
+    <footer className="mt-4 border-t border-slate-200 bg-white/80 px-4 py-6 text-center text-sm font-semibold text-slate-500">
+      <p>Copyright © KMG Co.,Ltd. All rights reserved.</p>
+    </footer>
   </main>;
 }
