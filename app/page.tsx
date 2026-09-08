@@ -269,20 +269,43 @@ export default function Home() {
   const chooseRegion = (name: string) => { const r = regions.find(x => x.name === name)!; selectPrefecture(r.prefs[0], name); };
   const searchPlaces = async (event: FormEvent) => {
     event.preventDefault();
-    const query = placeQuery.trim();
+    const query = placeQuery.trim().replace(/[\s　]/g, "");
     if (query.length < 2) { setPlaceSearchError("市区町村名を2文字以上入力してください。"); return; }
     setPlaceSearching(true);
     setPlaceSearchError("");
     try {
-      const fetchResults = async (name: string) => {
-        const params = new URLSearchParams({ name, count:"10", language:"ja", countryCode:"JP" });
-        const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${params}`);
-        if (!response.ok) throw new Error("place search failed");
-        return (await response.json()).results ?? [];
+      const fetchMunicipalityPoint = async (prefecture: string, municipality: string, town = "") => {
+        const response = await fetch(`https://geolonia.github.io/japanese-addresses/api/ja/${encodeURIComponent(prefecture)}/${encodeURIComponent(municipality)}.json`);
+        if (!response.ok) throw new Error("municipality point failed");
+        const points = await response.json();
+        const point = (town && points.find((item: any) => String(item.town).startsWith(town))) || points[0];
+        if (!point) throw new Error("municipality point missing");
+        return { latitude:point.lat, longitude:point.lng };
       };
-      let rawResults = await fetchResults(query);
-      if (!rawResults.length && /[市区町村]$/.test(query)) rawResults = await fetchResults(query.slice(0, -1));
-      const results = rawResults.filter((item: any) => prefectures.includes(item.admin1));
+      let candidates: { prefecture:string; municipality:string; town?:string; postalCode?:string }[] = [];
+      const postalCode = query.replace(/-/g, "");
+      if (/^\d{7}$/.test(postalCode)) {
+        const response = await fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${postalCode}`);
+        if (!response.ok) throw new Error("postal search failed");
+        const data = await response.json();
+        candidates = (data.results ?? []).map((item: any) => ({ prefecture:item.address1, municipality:item.address2, town:item.address3, postalCode:item.zipcode }));
+      } else {
+        const response = await fetch("https://geolonia.github.io/japanese-addresses/api/ja.json");
+        if (!response.ok) throw new Error("municipality search failed");
+        const municipalityMap = await response.json();
+        candidates = Object.entries(municipalityMap).flatMap(([prefecture, municipalities]: any) =>
+          municipalities.filter((municipality: string) => municipality.includes(query) || `${prefecture}${municipality}`.includes(query))
+            .map((municipality: string) => ({ prefecture, municipality }))
+        ).slice(0, 10);
+      }
+      const results = (await Promise.all(candidates.map(async (candidate, index) => ({
+        id:`${candidate.prefecture}-${candidate.municipality}-${candidate.postalCode ?? index}`,
+        name:candidate.municipality,
+        admin1:candidate.prefecture,
+        admin2:candidate.town ?? "",
+        postalCode:candidate.postalCode,
+        ...await fetchMunicipalityPoint(candidate.prefecture, candidate.municipality, candidate.town),
+      }))));
       setPlaceResults(results);
       if (!results.length) setPlaceSearchError("該当する市区町村が見つかりませんでした。");
     } catch {
@@ -319,7 +342,7 @@ export default function Home() {
     <div className="mx-auto grid w-full max-w-[1680px] gap-5 p-3 sm:p-4 md:p-8 xl:grid-cols-[minmax(520px,620px)_minmax(0,1fr)]">
       <aside className="order-1 min-w-0 space-y-5">
         <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[28px] sm:p-5"><button type="button" onClick={()=>setLocationOpen(open => !open)} className="mb-3 flex min-h-12 w-full items-center justify-between text-left xl:pointer-events-none" aria-expanded={locationOpen}><div><p className="text-sm font-bold text-blue-600 md:text-xs">予報地点を選択</p><h2 className="text-xl font-black sm:text-base">{displayLocation}・地点を変更</h2></div><span className="flex items-center gap-2"><MapPin className="shrink-0 text-blue-500"/><ChevronDown className={`xl:hidden transition ${locationOpen ? "rotate-180" : ""}`} size={20}/></span></button><div className={`${locationOpen ? "block" : "hidden"} xl:block`}>
-          <form onSubmit={searchPlaces} className="mb-4 rounded-2xl bg-blue-50 p-3"><label htmlFor="place-search" className="mb-2 block text-sm font-black text-blue-900">全国の市区町村・郵便番号から検索</label><div className="flex gap-2"><input id="place-search" value={placeQuery} onChange={event=>setPlaceQuery(event.target.value)} placeholder="例：世田谷区、横浜市、100-0001" className="min-h-12 min-w-0 flex-1 rounded-xl border border-blue-200 bg-white px-3 text-base outline-none focus:border-blue-500"/><button type="submit" disabled={placeSearching} className="flex min-h-12 shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white disabled:opacity-60"><Search size={19}/>{placeSearching ? "検索中" : "検索"}</button></div>{placeSearchError && <p className="mt-2 text-sm font-bold text-rose-600">{placeSearchError}</p>}{placeResults.length > 0 && <div className="mt-2 grid gap-2">{placeResults.map(place=><button type="button" key={`${place.id}-${place.latitude}`} onClick={()=>choosePlace(place)} className="min-h-12 rounded-xl border border-blue-100 bg-white px-3 text-left hover:border-blue-400"><b className="block text-base">{place.name}</b><span className="text-sm text-slate-500">{[place.admin1, place.admin2, place.admin3].filter(Boolean).join("・")}</span></button>)}</div>}</form>
+          <form onSubmit={searchPlaces} className="mb-4 rounded-2xl bg-blue-50 p-3"><label htmlFor="place-search" className="mb-2 block text-sm font-black text-blue-900">全国の市区町村・郵便番号から検索</label><div className="flex gap-2"><input id="place-search" value={placeQuery} onChange={event=>setPlaceQuery(event.target.value)} placeholder="例：江東区、横浜市、1350043" className="min-h-12 min-w-0 flex-1 rounded-xl border border-blue-200 bg-white px-3 text-base outline-none focus:border-blue-500"/><button type="submit" disabled={placeSearching} className="flex min-h-12 shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white disabled:opacity-60"><Search size={19}/>{placeSearching ? "検索中" : "検索"}</button></div>{placeSearchError && <p className="mt-2 text-sm font-bold text-rose-600">{placeSearchError}</p>}{placeResults.length > 0 && <div className="mt-2 grid gap-2">{placeResults.map(place=><button type="button" key={`${place.id}-${place.latitude}`} onClick={()=>choosePlace(place)} className="min-h-12 rounded-xl border border-blue-100 bg-white px-3 text-left hover:border-blue-400"><b className="block text-base">{place.name}</b><span className="text-sm text-slate-500">{[place.admin1, place.admin2, place.postalCode && `〒${place.postalCode}`].filter(Boolean).join("・")}</span></button>)}</div>}</form>
           <div className="relative mx-auto aspect-square w-full max-w-[600px] overflow-hidden rounded-2xl bg-gradient-to-b from-sky-50 to-blue-50/40">
             <img src="/japan-prefectures.svg" alt="47都道府県の境界を表示した日本地図" className="h-full w-full object-contain p-1 opacity-90 sm:p-3"/>
             {mapCities.map(c=><button key={c.name} onClick={()=>selectPrefecture(c.pref, c.region)} style={{left:`${c.left}%`,top:`${c.top}%`}} className="absolute z-20 hidden -translate-x-1/2 items-center gap-1 rounded-lg border border-white bg-white/95 px-1.5 py-1 text-left shadow-md transition hover:z-30 hover:scale-105 sm:flex"><span className="text-2xl leading-none">{c.icon}</span><span><b className="block text-[11px] leading-none">{c.name}</b><b className="text-sm font-black text-blue-700">{c.temperature == null ? "--" : `${c.temperature}°`}</b></span></button>)}
