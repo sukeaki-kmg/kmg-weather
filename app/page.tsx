@@ -358,6 +358,11 @@ export default function Home() {
     navigator.geolocation.getCurrentPosition(async position => {
       const latitude = Number(position.coords.latitude.toFixed(5));
       const longitude = Number(position.coords.longitude.toFixed(5));
+      setSelectedPlace({ name:"現在地", prefecture:pref, latitude, longitude, municipalityCode:"" });
+      setPlaceQuery("");
+      setPlaceResults([]);
+      setLocationLoading(false);
+      setLocationOpen(false);
       let municipalityName = "現在地";
       let municipalityCode = "";
       let nextPref = pref;
@@ -374,14 +379,10 @@ export default function Home() {
       setPref(nextPref);
       setRegion(regions.find(item => item.prefs.includes(nextPref))?.name ?? region);
       setSelectedPlace({ name:municipalityName, prefecture:nextPref, latitude, longitude, municipalityCode });
-      setPlaceQuery("");
-      setPlaceResults([]);
-      setLocationLoading(false);
-      setLocationOpen(false);
     }, error => {
       setLocationLoading(false);
       setLocationError(error.code === error.PERMISSION_DENIED ? "位置情報が許可されていません。端末の設定から許可してください。" : "現在地を取得できませんでした。もう一度お試しください。");
-    }, { enableHighAccuracy:false, timeout:10000, maximumAge:10 * 60 * 1000 });
+    }, { enableHighAccuracy:false, timeout:5000, maximumAge:60 * 60 * 1000 });
   };
 
   return <main className="min-h-screen bg-[#f3f7fb] text-[#13233b]">
