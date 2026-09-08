@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CalendarDays, ChevronDown, CloudRain, Compass, ExternalLink, MapPin, ShieldCheck, Umbrella } from "lucide-react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CalendarDays, ChevronDown, CloudRain, Compass, ExternalLink, MapPin, Search, ShieldCheck, Umbrella } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -67,6 +67,11 @@ export default function Home() {
   const [forecastError, setForecastError] = useState("");
   const [locationOpen, setLocationOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
+  const [placeQuery, setPlaceQuery] = useState("");
+  const [placeResults, setPlaceResults] = useState<any[]>([]);
+  const [placeSearching, setPlaceSearching] = useState(false);
+  const [placeSearchError, setPlaceSearchError] = useState("");
+  const [selectedPlace, setSelectedPlace] = useState<any>(null);
   const [warningStatus, setWarningStatus] = useState<any>({ level:"loading", title:"警報・注意報を確認中", names:[], headline:"", updated:"" });
 
   useEffect(() => {
@@ -98,7 +103,7 @@ export default function Home() {
     return () => window.clearInterval(refreshTimer);
   }, []);
   useEffect(() => {
-    const [latitude, longitude] = coordinates[pref] ?? coordinates["東京都"];
+    const [latitude, longitude] = selectedPlace ? [selectedPlace.latitude, selectedPlace.longitude] : (coordinates[pref] ?? coordinates["東京都"]);
     const params = new URLSearchParams({
       latitude: String(latitude), longitude: String(longitude), timezone: "Asia/Tokyo", forecast_days: "7",
       forecast_hours: "24",
@@ -111,14 +116,17 @@ export default function Home() {
       .then(response => { if (!response.ok) throw new Error("forecast request failed"); return response.json(); })
       .then(data => { setForecast(data); setLastUpdated(new Intl.DateTimeFormat("ja-JP", { timeZone:"Asia/Tokyo", hour:"2-digit", minute:"2-digit" }).format(new Date())); })
       .catch(() => { setForecast(null); setForecastError("予報データを取得できませんでした。しばらくしてから再読み込みしてください。"); });
-  }, [pref]);
+  }, [pref, selectedPlace]);
   useEffect(() => {
     const officeCode = officeCodeFor(pref);
     setWarningStatus({ level:"loading", title:"警報・注意報を確認中", names:[], headline:"", updated:"" });
     fetch(`https://www.jma.go.jp/bosai/warning/data/warning/${officeCode}.json`)
       .then(response => { if (!response.ok) throw new Error("warning request failed"); return response.json(); })
       .then(data => {
-        const activeCodes = Array.from(new Set((data.areaTypes?.[0]?.areas ?? []).flatMap((area: any) => area.warnings ?? [])
+        const warningAreas = selectedPlace?.municipalityCode
+          ? (data.areaTypes?.[1]?.areas ?? []).filter((area: any) => area.code === selectedPlace.municipalityCode)
+          : (data.areaTypes?.[0]?.areas ?? []);
+        const activeCodes = Array.from(new Set(warningAreas.flatMap((area: any) => area.warnings ?? [])
           .filter((warning: any) => warning.code && warning.status !== "解除")
           .map((warning: any) => String(warning.code)))) as string[];
         const names = activeCodes.map(code => warningNames[code] ?? `気象警報・注意報（${code}）`);
@@ -135,7 +143,7 @@ export default function Home() {
         });
       })
       .catch(() => setWarningStatus({ level:"error", title:"警報・注意報を取得できません", names:[], headline:"気象庁の公式情報をご確認ください。", updated:"" }));
-  }, [pref]);
+  }, [pref, selectedPlace?.municipalityCode]);
   useEffect(() => {
     const cityCoordinates = cities.map(city => coordinates[city.pref]);
     const params = new URLSearchParams({
@@ -231,9 +239,12 @@ export default function Home() {
   const rainRange = rainValues.length ? `${Math.round(Math.min(...rainValues))}〜${Math.round(Math.max(...rainValues))}%` : "--";
   const temperatureRange = highValues.length && lowValues.length ? `${Math.round(Math.min(...lowValues))}〜${Math.round(Math.max(...highValues))}℃` : "--";
   const forecastStability = agreement === validRows.length && validRows.length === providers.length ? "予報の一致度が高いです" : agreement <= Math.floor(Math.max(validRows.length, 1) / 2) ? "予報が割れています" : "予報はおおむね一致";
+  const displayLocation = selectedPlace?.name ?? pref;
   const officeCode = officeCodeFor(pref);
-  const [selectedLatitude, selectedLongitude] = coordinates[pref] ?? coordinates["東京都"];
-  const warningUrl = `https://www.jma.go.jp/bosai/warning/#area_type=offices&area_code=${officeCode}`;
+  const [selectedLatitude, selectedLongitude] = selectedPlace ? [selectedPlace.latitude, selectedPlace.longitude] : (coordinates[pref] ?? coordinates["東京都"]);
+  const warningUrl = selectedPlace?.municipalityCode
+    ? `https://www.jma.go.jp/bosai/warning/#area_type=class20s&area_code=${selectedPlace.municipalityCode}`
+    : `https://www.jma.go.jp/bosai/warning/#area_type=offices&area_code=${officeCode}`;
   const riskMapUrl = `https://www.jma.go.jp/bosai/risk/#zoom:7/lat:${selectedLatitude}/lon:${selectedLongitude}/colordepth:normal/elements:land`;
   const warningTheme = warningStatus.level === "special" || warningStatus.level === "warning"
     ? "border-rose-300 bg-rose-50 text-rose-950"
@@ -250,25 +261,73 @@ export default function Home() {
           ? "border-violet-400 bg-gradient-to-br from-violet-800 via-indigo-700 to-blue-600 shadow-indigo-300/70"
           : "border-blue-300 bg-gradient-to-br from-blue-700 via-blue-500 to-sky-400 shadow-blue-200/70";
   const active = regions.find(r => r.name === region) ?? regions[2];
-  const chooseRegion = (name: string) => { const r = regions.find(x => x.name === name)!; setRegion(name); setPref(r.prefs[0]); };
+  const selectPrefecture = (name: string, regionName?: string) => {
+    setSelectedPlace(null);
+    setPref(name);
+    setRegion(regionName ?? regions.find(item => item.prefs.includes(name))?.name ?? "関東");
+  };
+  const chooseRegion = (name: string) => { const r = regions.find(x => x.name === name)!; selectPrefecture(r.prefs[0], name); };
+  const searchPlaces = async (event: FormEvent) => {
+    event.preventDefault();
+    const query = placeQuery.trim();
+    if (query.length < 2) { setPlaceSearchError("市区町村名を2文字以上入力してください。"); return; }
+    setPlaceSearching(true);
+    setPlaceSearchError("");
+    try {
+      const fetchResults = async (name: string) => {
+        const params = new URLSearchParams({ name, count:"10", language:"ja", countryCode:"JP" });
+        const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${params}`);
+        if (!response.ok) throw new Error("place search failed");
+        return (await response.json()).results ?? [];
+      };
+      let rawResults = await fetchResults(query);
+      if (!rawResults.length && /[市区町村]$/.test(query)) rawResults = await fetchResults(query.slice(0, -1));
+      const results = rawResults.filter((item: any) => prefectures.includes(item.admin1));
+      setPlaceResults(results);
+      if (!results.length) setPlaceSearchError("該当する市区町村が見つかりませんでした。");
+    } catch {
+      setPlaceResults([]);
+      setPlaceSearchError("地点を検索できませんでした。もう一度お試しください。");
+    } finally { setPlaceSearching(false); }
+  };
+  const choosePlace = async (place: any) => {
+    const nextRegion = regions.find(item => item.prefs.includes(place.admin1))?.name ?? "関東";
+    const municipalityName = [place.name, place.admin2, place.admin3, place.admin4].find((name: unknown) => typeof name === "string" && /[市区町村]$/.test(name)) ?? place.name;
+    let municipalityCode = "";
+    try {
+      const areaResponse = await fetch("https://www.jma.go.jp/bosai/common/const/area.json");
+      if (areaResponse.ok) {
+        const areaData = await areaResponse.json();
+        const prefix = String(prefectures.indexOf(place.admin1) + 1).padStart(2, "0");
+        municipalityCode = Object.entries(areaData.class20s ?? {}).find(([code, area]: any) => code.startsWith(prefix) && area.name === municipalityName)?.[0] ?? "";
+      }
+    } catch { municipalityCode = ""; }
+    setPref(place.admin1);
+    setRegion(nextRegion);
+    setSelectedPlace({ name:municipalityName, prefecture:place.admin1, latitude:place.latitude, longitude:place.longitude, municipalityCode });
+    setPlaceQuery("");
+    setPlaceResults([]);
+    setLocationOpen(false);
+  };
 
   return <main className="min-h-screen bg-[#f3f7fb] text-[#13233b]">
     <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur"><div className="mx-auto flex max-w-[1440px] items-center justify-between px-4 py-3 md:px-8">
       <div className="flex items-center gap-3"><span className="grid size-11 place-items-center rounded-2xl bg-[#246bfd] text-white shadow-lg shadow-blue-200"><Compass size={24}/></span><div><h1 className="text-xl font-black tracking-tight">KMG天気予報</h1><p className="text-[11px] font-bold tracking-[.14em] text-slate-400">WEATHER FORECAST</p></div></div>
       <div className="hidden items-center gap-2 text-xs font-semibold text-slate-500 md:flex"><ShieldCheck size={16} className="text-emerald-500"/>4つの予報データを比較中</div>
     </div></header>
-    <div className="mx-auto w-full max-w-[1680px] px-3 pt-3 sm:px-4 sm:pt-4 md:px-8 md:pt-8"><section className={`rounded-2xl border p-4 ${warningTheme}`}><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white/80"><AlertTriangle size={22}/></span><div><h2 className="text-lg font-black">{pref}：{warningStatus.title}</h2>{warningStatus.names.length > 0 && <p className="mt-1 text-sm font-bold">{warningStatus.names.slice(0, 4).join("・")}{warningStatus.names.length > 4 ? ` ほか${warningStatus.names.length - 4}件` : ""}</p>}<p className="mt-1 text-sm opacity-80">{warningStatus.headline || "気象庁発表の最新情報です。"}{warningStatus.updated && `（${warningStatus.updated}発表）`}</p></div></div><div className="grid shrink-0 grid-cols-2 gap-2 sm:flex"><a href={warningUrl} target="_blank" rel="noreferrer" className="min-h-11 rounded-xl border border-current bg-white px-4 py-2.5 text-center text-sm font-black">詳細を確認</a><a href={riskMapUrl} target="_blank" rel="noreferrer" className="min-h-11 rounded-xl bg-amber-600 px-4 py-2.5 text-center text-sm font-black text-white">キキクル</a></div></div></section></div>
+    <div className="mx-auto w-full max-w-[1680px] px-3 pt-3 sm:px-4 sm:pt-4 md:px-8 md:pt-8"><section className={`rounded-2xl border p-4 ${warningTheme}`}><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white/80"><AlertTriangle size={22}/></span><div><h2 className="text-lg font-black">{displayLocation}：{warningStatus.title}</h2>{warningStatus.names.length > 0 && <p className="mt-1 text-sm font-bold">{warningStatus.names.slice(0, 4).join("・")}{warningStatus.names.length > 4 ? ` ほか${warningStatus.names.length - 4}件` : ""}</p>}<p className="mt-1 text-sm opacity-80">{warningStatus.headline || "気象庁発表の最新情報です。"}{warningStatus.updated && `（${warningStatus.updated}発表）`}</p></div></div><div className="grid shrink-0 grid-cols-2 gap-2 sm:flex"><a href={warningUrl} target="_blank" rel="noreferrer" className="min-h-11 rounded-xl border border-current bg-white px-4 py-2.5 text-center text-sm font-black">詳細を確認</a><a href={riskMapUrl} target="_blank" rel="noreferrer" className="min-h-11 rounded-xl bg-amber-600 px-4 py-2.5 text-center text-sm font-black text-white">キキクル</a></div></div></section></div>
     <div className="mx-auto grid w-full max-w-[1680px] gap-5 p-3 sm:p-4 md:p-8 xl:grid-cols-[minmax(520px,620px)_minmax(0,1fr)]">
       <aside className="order-1 min-w-0 space-y-5">
-        <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[28px] sm:p-5"><button type="button" onClick={()=>setLocationOpen(open => !open)} className="mb-3 flex min-h-12 w-full items-center justify-between text-left xl:pointer-events-none" aria-expanded={locationOpen}><div><p className="text-sm font-bold text-blue-600 md:text-xs">予報地点を選択</p><h2 className="text-xl font-black sm:text-base">{pref}・地点を変更</h2></div><span className="flex items-center gap-2"><MapPin className="shrink-0 text-blue-500"/><ChevronDown className={`xl:hidden transition ${locationOpen ? "rotate-180" : ""}`} size={20}/></span></button><div className={`${locationOpen ? "block" : "hidden"} xl:block`}>
+        <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[28px] sm:p-5"><button type="button" onClick={()=>setLocationOpen(open => !open)} className="mb-3 flex min-h-12 w-full items-center justify-between text-left xl:pointer-events-none" aria-expanded={locationOpen}><div><p className="text-sm font-bold text-blue-600 md:text-xs">予報地点を選択</p><h2 className="text-xl font-black sm:text-base">{displayLocation}・地点を変更</h2></div><span className="flex items-center gap-2"><MapPin className="shrink-0 text-blue-500"/><ChevronDown className={`xl:hidden transition ${locationOpen ? "rotate-180" : ""}`} size={20}/></span></button><div className={`${locationOpen ? "block" : "hidden"} xl:block`}>
+          <form onSubmit={searchPlaces} className="mb-4 rounded-2xl bg-blue-50 p-3"><label htmlFor="place-search" className="mb-2 block text-sm font-black text-blue-900">全国の市区町村・郵便番号から検索</label><div className="flex gap-2"><input id="place-search" value={placeQuery} onChange={event=>setPlaceQuery(event.target.value)} placeholder="例：世田谷区、横浜市、100-0001" className="min-h-12 min-w-0 flex-1 rounded-xl border border-blue-200 bg-white px-3 text-base outline-none focus:border-blue-500"/><button type="submit" disabled={placeSearching} className="flex min-h-12 shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white disabled:opacity-60"><Search size={19}/>{placeSearching ? "検索中" : "検索"}</button></div>{placeSearchError && <p className="mt-2 text-sm font-bold text-rose-600">{placeSearchError}</p>}{placeResults.length > 0 && <div className="mt-2 grid gap-2">{placeResults.map(place=><button type="button" key={`${place.id}-${place.latitude}`} onClick={()=>choosePlace(place)} className="min-h-12 rounded-xl border border-blue-100 bg-white px-3 text-left hover:border-blue-400"><b className="block text-base">{place.name}</b><span className="text-sm text-slate-500">{[place.admin1, place.admin2, place.admin3].filter(Boolean).join("・")}</span></button>)}</div>}</form>
           <div className="relative mx-auto aspect-square w-full max-w-[600px] overflow-hidden rounded-2xl bg-gradient-to-b from-sky-50 to-blue-50/40">
             <img src="/japan-prefectures.svg" alt="47都道府県の境界を表示した日本地図" className="h-full w-full object-contain p-1 opacity-90 sm:p-3"/>
-            {mapCities.map(c=><button key={c.name} onClick={()=>{setRegion(c.region);setPref(c.pref)}} style={{left:`${c.left}%`,top:`${c.top}%`}} className="absolute z-20 hidden -translate-x-1/2 items-center gap-1 rounded-lg border border-white bg-white/95 px-1.5 py-1 text-left shadow-md transition hover:z-30 hover:scale-105 sm:flex"><span className="text-2xl leading-none">{c.icon}</span><span><b className="block text-[11px] leading-none">{c.name}</b><b className="text-sm font-black text-blue-700">{c.temperature == null ? "--" : `${c.temperature}°`}</b></span></button>)}
+            {mapCities.map(c=><button key={c.name} onClick={()=>selectPrefecture(c.pref, c.region)} style={{left:`${c.left}%`,top:`${c.top}%`}} className="absolute z-20 hidden -translate-x-1/2 items-center gap-1 rounded-lg border border-white bg-white/95 px-1.5 py-1 text-left shadow-md transition hover:z-30 hover:scale-105 sm:flex"><span className="text-2xl leading-none">{c.icon}</span><span><b className="block text-[11px] leading-none">{c.name}</b><b className="text-sm font-black text-blue-700">{c.temperature == null ? "--" : `${c.temperature}°`}</b></span></button>)}
             <span className="absolute bottom-2 right-3 text-[10px] font-medium text-slate-500">地図: Geolonia / GFDL</span>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:hidden">{mapCities.map(c=><button key={c.name} onClick={()=>{setRegion(c.region);setPref(c.pref)}} className={`flex min-h-16 items-center gap-2 rounded-xl border p-2 text-left ${pref === c.pref ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white"}`}><span className="text-3xl leading-none">{c.icon}</span><span><b className="block text-sm font-black">{c.name}</b><b className="text-lg font-black text-blue-700">{c.temperature == null ? "--" : `${c.temperature}°`}</b></span></button>)}</div>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:hidden">{mapCities.map(c=><button key={c.name} onClick={()=>selectPrefecture(c.pref, c.region)} className={`flex min-h-16 items-center gap-2 rounded-xl border p-2 text-left ${!selectedPlace && pref === c.pref ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white"}`}><span className="text-3xl leading-none">{c.icon}</span><span><b className="block text-sm font-black">{c.name}</b><b className="text-lg font-black text-blue-700">{c.temperature == null ? "--" : `${c.temperature}°`}</b></span></button>)}</div>
           <p className="mt-2 text-center text-xs text-slate-400">地図の天気・気温も4モデルの実データ平均</p>
-          <div className="mt-4 grid grid-cols-2 gap-2"><Select value={region} onValueChange={chooseRegion}><SelectTrigger aria-label="地方を選択" className="h-12 text-base"><SelectValue/></SelectTrigger><SelectContent>{regions.map(r=><SelectItem key={r.name} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select><Select value={pref} onValueChange={setPref}><SelectTrigger aria-label="都道府県を選択" className="h-12 text-base"><SelectValue/></SelectTrigger><SelectContent>{active.prefs.map(p=><SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
+          <div className="mt-4 grid grid-cols-2 gap-2"><Select value={region} onValueChange={chooseRegion}><SelectTrigger aria-label="地方を選択" className="h-12 text-base"><SelectValue/></SelectTrigger><SelectContent>{regions.map(r=><SelectItem key={r.name} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select><Select value={pref} onValueChange={name=>selectPrefecture(name)}><SelectTrigger aria-label="都道府県を選択" className="h-12 text-base"><SelectValue/></SelectTrigger><SelectContent>{active.prefs.map(p=><SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
           </div>
         </section>
         <section className="hidden rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm xl:block"><div className="flex items-end justify-between gap-3"><div><p className="text-xs font-bold text-blue-600">FORECAST SOURCES</p><h2 className="text-xl font-black">4つの予報を比較</h2></div><p className="text-xs text-slate-400">更新 {lastUpdated || "--:--"}</p></div><div className="mt-4 grid gap-3">{rows.map(r=><article key={r.name} className="rounded-2xl border border-slate-200 p-3"><div className="flex items-center justify-between gap-3"><b>{r.name}</b><span className="flex items-center gap-2 text-sm font-bold"><span className="text-2xl" role="img" aria-label={r.weather}>{r.icon}</span>{r.weather}</span></div><div className="mt-3 grid grid-cols-3 gap-2 text-center text-sm"><div className="rounded-xl bg-slate-50 p-2"><span className="block text-[11px] text-slate-400">最高 / 最低</span><b><span className="text-rose-500">{r.hi ?? "--"}°</span> / <span className="text-blue-500">{r.lo ?? "--"}°</span></b></div><div className="rounded-xl bg-slate-50 p-2"><span className="block text-[11px] text-slate-400">降水確率</span><b className="text-blue-700">{r.rain == null ? "非配信" : `${r.rain}%`}</b></div><div className="rounded-xl bg-slate-50 p-2"><span className="block text-[11px] text-slate-400">最大風速</span><b>{r.wind == null ? "--" : `${Math.round(r.wind)} km/h`}</b></div></div></article>)}</div></section>
@@ -276,19 +335,19 @@ export default function Home() {
       </aside>
       <div className="order-2 min-w-0 space-y-5">
         <Tabs value={day} onValueChange={setDay} className="w-full"><TabsList className="grid h-12 w-full grid-cols-2 rounded-2xl bg-white p-1 shadow-sm"><TabsTrigger value="today" className="rounded-xl text-sm font-black">今日 <span className="ml-2 text-xs font-medium text-slate-400">{dateLabels.today}</span></TabsTrigger><TabsTrigger value="tomorrow" className="rounded-xl text-sm font-black">明日 <span className="ml-2 text-xs font-medium text-slate-400">{dateLabels.tomorrow}</span></TabsTrigger></TabsList></Tabs>
-        <section className={`rounded-[28px] border p-4 text-white shadow-xl transition-colors duration-500 sm:p-6 ${modelTheme}`} aria-labelledby="today-summary"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><p className="text-sm font-black text-white/80">実予報モデル</p><h2 id="today-summary" className="mt-1 text-2xl font-black">{pref} · {day === "today" ? "今日" : "明日"}</h2><p className="mt-1 text-lg font-black">{forecastError || (forecast ? `${selectedForecast?.weather ?? "取得中"}の予報` : "予報を取得しています…")}</p><p className="mt-1 text-sm text-white/80">JMA・GFS・ECMWF・ICONの最新値を比較</p></div><div className="flex items-center gap-3"><span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-white/90 text-4xl shadow-md" role="img" aria-label={selectedForecast?.weather ?? "取得中"}>{selectedForecast?.icon ?? "…"}</span><div><b className="block text-4xl font-black">{selectedForecast?.high ?? "--"}°</b><span className="text-base font-bold text-white/90">最低 {selectedForecast?.low ?? "--"}°</span></div></div></div>
+        <section className={`rounded-[28px] border p-4 text-white shadow-xl transition-colors duration-500 sm:p-6 ${modelTheme}`} aria-labelledby="today-summary"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><p className="text-sm font-black text-white/80">実予報モデル</p><h2 id="today-summary" className="mt-1 text-2xl font-black">{displayLocation} · {day === "today" ? "今日" : "明日"}</h2><p className="mt-1 text-lg font-black">{forecastError || (forecast ? `${selectedForecast?.weather ?? "取得中"}の予報` : "予報を取得しています…")}</p><p className="mt-1 text-sm text-white/80">JMA・GFS・ECMWF・ICONの最新値を比較</p></div><div className="flex items-center gap-3"><span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-white/90 text-4xl shadow-md" role="img" aria-label={selectedForecast?.weather ?? "取得中"}>{selectedForecast?.icon ?? "…"}</span><div><b className="block text-4xl font-black">{selectedForecast?.high ?? "--"}°</b><span className="text-base font-bold text-white/90">最低 {selectedForecast?.low ?? "--"}°</span></div></div></div>
           <div className="mt-4 rounded-2xl bg-white/90 p-4 text-slate-900 shadow-sm"><p className="text-lg font-black">{umbrellaAdvice}</p><p className="mt-1 text-sm font-bold text-blue-700">24時間の予想降水量 {forecast ? `${dayRainTotal}mm` : "--"}</p></div>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4"><div className="rounded-2xl bg-white/15 p-3 backdrop-blur"><span className="text-sm font-bold text-white/75">降水確率平均</span><b className="mt-1 block text-xl">{selectedForecast?.rain == null ? "--" : `${selectedForecast.rain}%`}</b></div><div className="rounded-2xl bg-white/15 p-3 backdrop-blur"><span className="text-sm font-bold text-white/75">雨のピーク</span><b className="mt-1 block text-lg">{maxHourlyRain > 0 && maxRainIndex >= 0 ? `${hourlyRain[maxRainIndex].fullLabel}・${maxHourlyRain}mm/h` : "目立った雨なし"}</b></div><div className="rounded-2xl bg-white/15 p-3 backdrop-blur"><span className="text-sm font-bold text-white/75">最大風速平均</span><b className="mt-1 block text-xl">{averageWind == null ? "--" : `${averageWind}km/h`}</b><span className="mt-1 block text-xs font-bold text-white/70">ピーク {forecast && maxWindIndex >= 0 ? hourlyRain[maxWindIndex].fullLabel : "--"}</span></div><div className={`rounded-2xl border p-3 ${warningTheme}`}><span className="text-sm font-bold opacity-70">警報・注意報</span><b className="mt-1 block text-base">{warningStatus.title}</b></div></div>
           <div className="mt-3 flex flex-wrap gap-2 text-sm font-bold"><span className="rounded-full bg-white/90 px-3 py-2 text-slate-800">{forecastStability}</span><span className="rounded-full bg-white/20 px-3 py-2">{validRows.length}/{providers.length}モデル有効</span><span className="rounded-full bg-white/20 px-3 py-2">多数派：{majorityWeather} {agreement}/{validRows.length || providers.length}</span><span className="rounded-full bg-white/20 px-3 py-2">降水確率 {rainRange}</span><span className="rounded-full bg-white/20 px-3 py-2">気温幅 {temperatureRange}</span></div>
         </section>
-        <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-6"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-blue-600">NEXT 24 HOURS</p><h2 className="text-xl font-black">更新時刻から先の24時間</h2><p className="mt-1 text-xs text-slate-400">{pref}・過ぎた時間を除いた実予報モデルの平均</p></div><CloudRain className="mt-1 text-blue-500" size={25}/></div>
+        <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-6"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-blue-600">NEXT 24 HOURS</p><h2 className="text-xl font-black">更新時刻から先の24時間</h2><p className="mt-1 text-xs text-slate-400">{displayLocation}・過ぎた時間を除いた実予報モデルの平均</p></div><CloudRain className="mt-1 text-blue-500" size={25}/></div>
           <div className={`mt-4 flex items-center gap-3 rounded-2xl border p-4 ${umbrellaNeeded ? "border-blue-200 bg-blue-50 text-blue-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}><span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white text-blue-600 shadow-sm"><Umbrella size={24}/></span><div><p className="text-sm font-bold opacity-70">傘のアドバイス</p><p className="text-lg font-black">{umbrellaAdvice}</p></div></div>
           <div className="mt-3 grid grid-cols-2 gap-3"><div className="rounded-2xl bg-sky-50 p-3 text-center"><span className="block text-xs font-bold text-slate-500">今後24時間の総降水量</span><b className="mt-1 block text-xl text-blue-700">{forecast ? `${dayRainTotal} mm` : "--"}</b></div><div className="rounded-2xl bg-slate-50 p-3 text-center"><span className="block text-xs font-bold text-slate-500">今後24時間の最大風速</span><b className="mt-1 block text-xl text-slate-800">{forecast ? `${dayMaxWind} km/h` : "--"}</b></div></div>
           <div><div className="mt-5 overflow-x-auto pb-2"><div className="min-w-[1440px]"><div className="grid h-44 grid-cols-[repeat(24,minmax(0,1fr))] items-end gap-1 border-b border-slate-200 px-1">{hourlyRain.map((h,index)=><div key={`${h.fullLabel}-${index}`} className="flex h-full flex-col items-center justify-end"><b className="mb-1 text-[11px] text-blue-700">{h.chance}%</b><div className="w-full max-w-10 rounded-t bg-gradient-to-t from-blue-600 to-sky-300 transition-all" style={{height:`${Math.max(6,h.chance)}%`}}/></div>)}</div>
           <div className="grid grid-cols-[repeat(24,minmax(0,1fr))] gap-1 px-1 pt-2 text-center text-xs font-bold text-slate-600">{hourlyRain.map((h,index)=><span key={`${h.fullLabel}-${index}`}><span className="block h-4 text-[10px] text-blue-500">{h.dateLabel}</span>{h.time}</span>)}</div>
           <div className="mt-4 grid grid-cols-[repeat(24,minmax(0,1fr))] overflow-hidden rounded-xl border border-slate-200 text-center text-xs">{hourlyRain.map((h,index)=><div key={`${h.fullLabel}-${index}`} className="border-r border-slate-100 px-1 py-2 last:border-0"><span className="block h-4 text-[10px] font-bold text-blue-500">{h.dateLabel}</span><span className="block font-bold text-slate-600">{h.time}</span><span className="mt-1 block text-[10px] text-slate-400">降水確率</span><b className="block text-blue-700">{h.chance}%</b><span className="mt-1 block text-[10px] text-slate-400">降水量</span><b className="block text-sky-700">{h.precipitation}mm</b><span className="mt-1 block text-[10px] text-slate-400">風速</span><b className="block text-slate-700">{h.wind}km/h</b></div>)}</div></div></div></div>
         </section>
-        <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-6"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-blue-600">7-DAY FORECAST</p><h2 className="text-xl font-black">週間天気</h2><p className="mt-1 text-sm text-slate-500">{pref}・JMA / GFS / ECMWF / ICONの平均予報</p></div><CalendarDays className="mt-1 text-blue-500" size={25}/></div>
+        <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-6"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-blue-600">7-DAY FORECAST</p><h2 className="text-xl font-black">週間天気</h2><p className="mt-1 text-sm text-slate-500">{displayLocation}・JMA / GFS / ECMWF / ICONの平均予報</p></div><CalendarDays className="mt-1 text-blue-500" size={25}/></div>
           <div className="mt-5 overflow-x-auto pb-2"><div className="grid min-w-[840px] grid-cols-7 gap-3">{weeklyForecast.map((item, index)=><article key={`${item.date}-${index}`} className={`min-w-0 overflow-hidden rounded-2xl border px-2 py-3 text-center ${index === 0 ? "border-blue-400 bg-blue-50" : "border-slate-200 bg-slate-50/70"}`}><div className="text-sm font-black text-slate-700">{index === 0 ? "今日" : item.date}</div><div className="my-3 text-4xl leading-none" role="img" aria-label={item.weather}>{item.icon}</div><div className="text-sm font-bold text-slate-600">{item.weather}</div><div className="mt-3 grid gap-1 rounded-xl bg-white px-2 py-2 text-sm font-black"><div className="flex items-center justify-between gap-1 whitespace-nowrap"><span className="text-[11px] text-slate-400">最高</span><span className="text-base text-rose-500">{item.high ?? "--"}°</span></div><div className="flex items-center justify-between gap-1 whitespace-nowrap"><span className="text-[11px] text-slate-400">最低</span><span className="text-base text-blue-500">{item.low ?? "--"}°</span></div></div><div className="mt-2 rounded-lg bg-white px-1 py-2 text-sm font-bold text-blue-700">降水 {item.rain == null ? "--" : `${item.rain}%`}</div><div className={`mt-2 rounded-full px-1 py-1.5 text-[11px] font-black ${item.confidence.style}`}>{item.confidence.label}</div></article>)}</div></div>
           <p className="mt-2 text-xs leading-5 text-slate-400">気温と天気傾向は4モデルの実データを集計。降水確率は各モデルで配信されている値だけを平均しています。</p>
         </section>
