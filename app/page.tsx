@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CalendarDays, ChevronDown, CloudRain, Compass, ExternalLink, MapPin, Search, ShieldCheck, Umbrella } from "lucide-react";
+import { AlertTriangle, CalendarDays, ChevronDown, CloudRain, Compass, ExternalLink, LocateFixed, MapPin, Search, ShieldCheck, Umbrella } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -72,6 +72,9 @@ export default function Home() {
   const [placeSearching, setPlaceSearching] = useState(false);
   const [placeSearchError, setPlaceSearchError] = useState("");
   const [selectedPlace, setSelectedPlace] = useState<any>(null);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState("");
+  const [shortRain, setShortRain] = useState<any>(null);
   const [warningStatus, setWarningStatus] = useState<any>({ level:"loading", title:"警報・注意報を確認中", names:[], headline:"", updated:"" });
 
   useEffect(() => {
@@ -116,6 +119,14 @@ export default function Home() {
       .then(response => { if (!response.ok) throw new Error("forecast request failed"); return response.json(); })
       .then(data => { setForecast(data); setLastUpdated(new Intl.DateTimeFormat("ja-JP", { timeZone:"Asia/Tokyo", hour:"2-digit", minute:"2-digit" }).format(new Date())); })
       .catch(() => { setForecast(null); setForecastError("予報データを取得できませんでした。しばらくしてから再読み込みしてください。"); });
+  }, [pref, selectedPlace]);
+  useEffect(() => {
+    const [latitude, longitude] = selectedPlace ? [selectedPlace.latitude, selectedPlace.longitude] : (coordinates[pref] ?? coordinates["東京都"]);
+    const params = new URLSearchParams({ latitude:String(latitude), longitude:String(longitude), timezone:"Asia/Tokyo", minutely_15:"precipitation", forecast_minutely_15:"5" });
+    fetch(`https://api.open-meteo.com/v1/forecast?${params}`)
+      .then(response => { if (!response.ok) throw new Error("short rain request failed"); return response.json(); })
+      .then(data => setShortRain(data.minutely_15 ?? null))
+      .catch(() => setShortRain(null));
   }, [pref, selectedPlace]);
   useEffect(() => {
     const officeCode = officeCodeFor(pref);
@@ -233,6 +244,14 @@ export default function Home() {
   const rangeLabel = umbrellaRanges.slice(0, 2).map(range => `${hourlyRain[range.start]?.fullLabel}〜${hourlyRain[range.end]?.time}`).join("、");
   const umbrellaNeeded = umbrellaHours.length > 0 || dayRainTotal >= 0.5;
   const umbrellaAdvice = !forecast ? "降水データを取得中…" : !umbrellaNeeded ? "今後24時間は傘なしで過ごせそうです" : rangeLabel ? `${rangeLabel}は傘推奨（最大${maxHourlyRain}mm/h）` : `雨の可能性があります（24時間で${dayRainTotal}mm）`;
+  const shortRainValues = (shortRain?.precipitation ?? []).map((amount: unknown) => typeof amount === "number" ? amount : 0);
+  const approachingRainIndex = shortRainValues.findIndex((amount: number) => amount >= 0.1);
+  const approachingRainAmount = approachingRainIndex >= 0 ? Number((shortRainValues[approachingRainIndex] * 4).toFixed(1)) : 0;
+  const rainApproachMessage = !shortRain ? "現在地周辺の短時間降水予測を取得中…" : approachingRainIndex === 0
+    ? `現在、雨雲がかかる可能性があります（目安 ${approachingRainAmount}mm/h）`
+    : approachingRainIndex > 0
+      ? `約${approachingRainIndex * 15}分後に雨雲が接近する可能性があります（目安 ${approachingRainAmount}mm/h）`
+      : "今後1時間は目立った雨雲の接近予測はありません";
   const rainValues = rows.map(row => row.rain).filter((v): v is number => typeof v === "number");
   const highValues = rows.map(row => row.hi).filter((v): v is number => typeof v === "number");
   const lowValues = rows.map(row => row.lo).filter((v): v is number => typeof v === "number");
@@ -332,6 +351,38 @@ export default function Home() {
     setPlaceResults([]);
     setLocationOpen(false);
   };
+  const useCurrentLocation = () => {
+    setLocationError("");
+    if (!navigator.geolocation) { setLocationError("この端末は現在地取得に対応していません。"); return; }
+    setLocationLoading(true);
+    navigator.geolocation.getCurrentPosition(async position => {
+      const latitude = Number(position.coords.latitude.toFixed(5));
+      const longitude = Number(position.coords.longitude.toFixed(5));
+      let municipalityName = "現在地";
+      let municipalityCode = "";
+      let nextPref = pref;
+      try {
+        const reverseResponse = await fetch(`https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${latitude}&lon=${longitude}`);
+        const reverseData = reverseResponse.ok ? await reverseResponse.json() : null;
+        const muniCd = String(reverseData?.results?.muniCd ?? "");
+        if (muniCd.length >= 2) nextPref = prefectures[Number(muniCd.slice(0, 2)) - 1] ?? pref;
+        const areaResponse = await fetch("https://www.jma.go.jp/bosai/common/const/area.json");
+        const areaData = areaResponse.ok ? await areaResponse.json() : null;
+        const municipality = muniCd ? Object.entries(areaData?.class20s ?? {}).find(([code]) => code.startsWith(muniCd)) : undefined;
+        if (municipality) { municipalityCode = municipality[0]; municipalityName = (municipality[1] as any).name; }
+      } catch { municipalityName = "現在地"; }
+      setPref(nextPref);
+      setRegion(regions.find(item => item.prefs.includes(nextPref))?.name ?? region);
+      setSelectedPlace({ name:municipalityName, prefecture:nextPref, latitude, longitude, municipalityCode });
+      setPlaceQuery("");
+      setPlaceResults([]);
+      setLocationLoading(false);
+      setLocationOpen(false);
+    }, error => {
+      setLocationLoading(false);
+      setLocationError(error.code === error.PERMISSION_DENIED ? "位置情報が許可されていません。端末の設定から許可してください。" : "現在地を取得できませんでした。もう一度お試しください。");
+    }, { enableHighAccuracy:false, timeout:10000, maximumAge:10 * 60 * 1000 });
+  };
 
   return <main className="min-h-screen bg-[#f3f7fb] text-[#13233b]">
     <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur"><div className="mx-auto flex max-w-[1440px] items-center justify-between px-4 py-3 md:px-8">
@@ -342,7 +393,7 @@ export default function Home() {
     <div className="mx-auto grid w-full max-w-[1680px] gap-5 p-3 sm:p-4 md:p-8 xl:grid-cols-[minmax(520px,620px)_minmax(0,1fr)]">
       <aside className="order-1 min-w-0 space-y-5">
         <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[28px] sm:p-5"><button type="button" onClick={()=>setLocationOpen(open => !open)} className="mb-3 flex min-h-12 w-full items-center justify-between text-left xl:pointer-events-none" aria-expanded={locationOpen}><div><p className="text-sm font-bold text-blue-600 md:text-xs">予報地点を選択</p><h2 className="text-xl font-black sm:text-base">{displayLocation}・地点を変更</h2></div><span className="flex items-center gap-2"><MapPin className="shrink-0 text-blue-500"/><ChevronDown className={`xl:hidden transition ${locationOpen ? "rotate-180" : ""}`} size={20}/></span></button><div className={`${locationOpen ? "block" : "hidden"} xl:block`}>
-          <form onSubmit={searchPlaces} className="mb-4 rounded-2xl bg-blue-50 p-3"><label htmlFor="place-search" className="mb-2 block text-sm font-black text-blue-900">全国の市区町村・郵便番号から検索</label><div className="flex gap-2"><input id="place-search" value={placeQuery} onChange={event=>setPlaceQuery(event.target.value)} placeholder="例：江東区、横浜市、1350043" className="min-h-12 min-w-0 flex-1 rounded-xl border border-blue-200 bg-white px-3 text-base outline-none focus:border-blue-500"/><button type="submit" disabled={placeSearching} className="flex min-h-12 shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white disabled:opacity-60"><Search size={19}/>{placeSearching ? "検索中" : "検索"}</button></div>{placeSearchError && <p className="mt-2 text-sm font-bold text-rose-600">{placeSearchError}</p>}{placeResults.length > 0 && <div className="mt-2 grid gap-2">{placeResults.map(place=><button type="button" key={`${place.id}-${place.latitude}`} onClick={()=>choosePlace(place)} className="min-h-12 rounded-xl border border-blue-100 bg-white px-3 text-left hover:border-blue-400"><b className="block text-base">{place.name}</b><span className="text-sm text-slate-500">{[place.admin1, place.admin2, place.postalCode && `〒${place.postalCode}`].filter(Boolean).join("・")}</span></button>)}</div>}</form>
+          <form onSubmit={searchPlaces} className="mb-4 rounded-2xl bg-blue-50 p-3"><label htmlFor="place-search" className="mb-2 block text-sm font-black text-blue-900">全国の市区町村・郵便番号から検索</label><div className="flex gap-2"><input id="place-search" value={placeQuery} onChange={event=>setPlaceQuery(event.target.value)} placeholder="例：江東区、横浜市、1350043" className="min-h-12 min-w-0 flex-1 rounded-xl border border-blue-200 bg-white px-3 text-base outline-none focus:border-blue-500"/><button type="submit" disabled={placeSearching} className="flex min-h-12 shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white disabled:opacity-60"><Search size={19}/>{placeSearching ? "検索中" : "検索"}</button></div><button type="button" onClick={useCurrentLocation} disabled={locationLoading} className="mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white font-black text-blue-700 disabled:opacity-60"><LocateFixed size={19}/>{locationLoading ? "現在地を取得中…" : "現在地の天気を見る"}</button>{locationError && <p className="mt-2 text-sm font-bold text-rose-600">{locationError}</p>}{placeSearchError && <p className="mt-2 text-sm font-bold text-rose-600">{placeSearchError}</p>}{placeResults.length > 0 && <div className="mt-2 grid gap-2">{placeResults.map(place=><button type="button" key={`${place.id}-${place.latitude}`} onClick={()=>choosePlace(place)} className="min-h-12 rounded-xl border border-blue-100 bg-white px-3 text-left hover:border-blue-400"><b className="block text-base">{place.name}</b><span className="text-sm text-slate-500">{[place.admin1, place.admin2, place.postalCode && `〒${place.postalCode}`].filter(Boolean).join("・")}</span></button>)}</div>}</form>
           <div className="relative mx-auto aspect-square w-full max-w-[600px] overflow-hidden rounded-2xl bg-gradient-to-b from-sky-50 to-blue-50/40">
             <img src="/japan-prefectures.svg" alt="47都道府県の境界を表示した日本地図" className="h-full w-full object-contain p-1 opacity-90 sm:p-3"/>
             {mapCities.map(c=><button key={c.name} onClick={()=>selectPrefecture(c.pref, c.region)} style={{left:`${c.left}%`,top:`${c.top}%`}} className="absolute z-20 hidden -translate-x-1/2 items-center gap-1 rounded-lg border border-white bg-white/95 px-1.5 py-1 text-left shadow-md transition hover:z-30 hover:scale-105 sm:flex"><span className="text-2xl leading-none">{c.icon}</span><span><b className="block text-[11px] leading-none">{c.name}</b><b className="text-sm font-black text-blue-700">{c.temperature == null ? "--" : `${c.temperature}°`}</b></span></button>)}
@@ -364,7 +415,7 @@ export default function Home() {
           <div className="mt-3 flex flex-wrap gap-2 text-sm font-bold"><span className="rounded-full bg-white/90 px-3 py-2 text-slate-800">{forecastStability}</span><span className="rounded-full bg-white/20 px-3 py-2">{validRows.length}/{providers.length}モデル有効</span><span className="rounded-full bg-white/20 px-3 py-2">多数派：{majorityWeather} {agreement}/{validRows.length || providers.length}</span><span className="rounded-full bg-white/20 px-3 py-2">降水確率 {rainRange}</span><span className="rounded-full bg-white/20 px-3 py-2">気温幅 {temperatureRange}</span></div>
         </section>
         <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm" aria-labelledby="rain-radar-title">
-          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:justify-between sm:p-6"><div><p className="text-xs font-bold text-blue-600">LIVE RAIN RADAR</p><h2 id="rain-radar-title" className="mt-1 text-xl font-black">{displayLocation}の雨雲レーダー</h2><p className="mt-1 text-sm text-slate-500">実況の雨雲を地図上で再生できます。予報モデルとは別の短時間情報です。</p></div><a href={`https://www.rainviewer.com/map.html?loc=${selectedLatitude},${selectedLongitude},8&layer=radar`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700">大きな地図で見る<ExternalLink size={16}/></a></div>
+          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:justify-between sm:p-6"><div><p className="text-xs font-bold text-blue-600">LIVE RAIN RADAR</p><h2 id="rain-radar-title" className="mt-1 text-xl font-black">{displayLocation}の雨雲レーダー</h2><p className="mt-1 text-sm text-slate-500">実況の雨雲を地図上で再生できます。予報モデルとは別の短時間情報です。</p><div className={`mt-3 rounded-xl border px-3 py-2 text-sm font-black ${approachingRainIndex >= 0 ? "border-blue-200 bg-blue-50 text-blue-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}><span className="mr-2">{approachingRainIndex >= 0 ? "☂" : "✓"}</span>{rainApproachMessage}</div></div><a href={`https://www.rainviewer.com/map.html?loc=${selectedLatitude},${selectedLongitude},8&layer=radar`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700">大きな地図で見る<ExternalLink size={16}/></a></div>
           <div className="relative aspect-[4/3] min-h-[340px] w-full bg-slate-100 sm:aspect-[16/9] sm:min-h-[420px]">
             <iframe key={`${selectedLatitude}-${selectedLongitude}`} title={`${displayLocation}の雨雲レーダー`} src={`https://www.rainviewer.com/map.html?loc=${selectedLatitude},${selectedLongitude},8&layer=radar`} loading="lazy" className="absolute inset-0 h-full w-full border-0" allowFullScreen/>
           </div>
