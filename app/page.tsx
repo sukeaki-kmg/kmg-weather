@@ -273,7 +273,7 @@ export default function Home() {
   const modelTheme = selectedForecast?.weather === "晴れ"
     ? "border-orange-300 bg-gradient-to-br from-orange-400 via-amber-400 to-yellow-300 shadow-orange-200/70"
     : selectedForecast?.weather === "くもり" || selectedForecast?.weather === "霧・霧雨"
-      ? "border-slate-400 bg-gradient-to-br from-slate-600 via-slate-500 to-slate-400 shadow-slate-300/70"
+      ? "border-slate-700 bg-gradient-to-br from-slate-950 via-slate-800 to-slate-700 shadow-slate-400/60"
       : selectedForecast?.weather === "雪"
         ? "border-cyan-200 bg-gradient-to-br from-sky-400 via-cyan-300 to-blue-200 shadow-cyan-200/70"
         : selectedForecast?.weather === "雷雨"
