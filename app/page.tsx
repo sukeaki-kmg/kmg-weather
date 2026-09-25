@@ -55,6 +55,21 @@ const cities = [
   { name:"那覇", pref:"沖縄県", region:"沖縄", icon:"🌦️", temp:"30°", left:17, top:25 },
 ];
 const officeCodeFor = (pref: string) => pref === "北海道" ? "016000" : pref === "鹿児島県" ? "460100" : pref === "沖縄県" ? "471000" : `${String(prefectures.indexOf(pref) + 1).padStart(2, "0")}0000`;
+let jmaAreaDataPromise: Promise<any> | null = null;
+const getJmaAreaData = () => {
+  if (!jmaAreaDataPromise) {
+    jmaAreaDataPromise = fetch("https://www.jma.go.jp/bosai/common/const/area.json")
+      .then(response => {
+        if (!response.ok) throw new Error("area data request failed");
+        return response.json();
+      })
+      .catch(error => {
+        jmaAreaDataPromise = null;
+        throw error;
+      });
+  }
+  return jmaAreaDataPromise;
+};
 
 export default function Home() {
   const [pref, setPref] = useState("東京都");
@@ -378,12 +393,9 @@ export default function Home() {
     const municipalityName = [place.name, place.admin2, place.admin3, place.admin4].find((name: unknown) => typeof name === "string" && /[市区町村]$/.test(name)) ?? place.name;
     let municipalityCode = "";
     try {
-      const areaResponse = await fetch("https://www.jma.go.jp/bosai/common/const/area.json");
-      if (areaResponse.ok) {
-        const areaData = await areaResponse.json();
-        const prefix = String(prefectures.indexOf(place.admin1) + 1).padStart(2, "0");
-        municipalityCode = Object.entries(areaData.class20s ?? {}).find(([code, area]: any) => code.startsWith(prefix) && area.name === municipalityName)?.[0] ?? "";
-      }
+      const areaData = await getJmaAreaData();
+      const prefix = String(prefectures.indexOf(place.admin1) + 1).padStart(2, "0");
+      municipalityCode = Object.entries(areaData.class20s ?? {}).find(([code, area]: any) => code.startsWith(prefix) && area.name === municipalityName)?.[0] ?? "";
     } catch { municipalityCode = ""; }
     setPref(place.admin1);
     setRegion(nextRegion);
@@ -396,30 +408,35 @@ export default function Home() {
     setLocationError("");
     if (!navigator.geolocation) { setLocationError("この端末は現在地取得に対応していません。"); return; }
     setLocationLoading(true);
+    const areaDataRequest = getJmaAreaData().catch(() => null);
     navigator.geolocation.getCurrentPosition(async position => {
       const latitude = Number(position.coords.latitude.toFixed(5));
       const longitude = Number(position.coords.longitude.toFixed(5));
-      setSelectedPlace({ name:"現在地", prefecture:pref, latitude, longitude, municipalityCode:"" });
-      setPlaceQuery("");
-      setPlaceResults([]);
-      setLocationLoading(false);
-      setLocationOpen(false);
-      let municipalityName = "現在地";
-      let municipalityCode = "";
-      let nextPref = pref;
       try {
-        const reverseResponse = await fetch(`https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${latitude}&lon=${longitude}`);
-        const reverseData = reverseResponse.ok ? await reverseResponse.json() : null;
+        const [reverseResponse, areaData] = await Promise.all([
+          fetch(`https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${latitude}&lon=${longitude}`),
+          areaDataRequest,
+        ]);
+        if (!reverseResponse.ok) throw new Error("reverse geocoder request failed");
+        const reverseData = await reverseResponse.json();
         const muniCd = String(reverseData?.results?.muniCd ?? "");
-        if (muniCd.length >= 2) nextPref = prefectures[Number(muniCd.slice(0, 2)) - 1] ?? pref;
-        const areaResponse = await fetch("https://www.jma.go.jp/bosai/common/const/area.json");
-        const areaData = areaResponse.ok ? await areaResponse.json() : null;
+        if (!muniCd) throw new Error("municipality code missing");
+        const nextPref = prefectures[Number(muniCd.slice(0, 2)) - 1] ?? pref;
         const municipality = muniCd ? Object.entries(areaData?.class20s ?? {}).find(([code]) => code.startsWith(muniCd)) : undefined;
-        if (municipality) { municipalityCode = municipality[0]; municipalityName = (municipality[1] as any).name; }
-      } catch { municipalityName = "現在地"; }
-      setPref(nextPref);
-      setRegion(regions.find(item => item.prefs.includes(nextPref))?.name ?? region);
-      setSelectedPlace({ name:municipalityName, prefecture:nextPref, latitude, longitude, municipalityCode });
+        if (!municipality) throw new Error("municipality missing");
+        const municipalityCode = municipality[0];
+        const municipalityName = (municipality[1] as any).name;
+        setPref(nextPref);
+        setRegion(regions.find(item => item.prefs.includes(nextPref))?.name ?? "関東");
+        setSelectedPlace({ name:municipalityName, prefecture:nextPref, latitude, longitude, municipalityCode });
+        setPlaceQuery("");
+        setPlaceResults([]);
+        setLocationOpen(false);
+      } catch {
+        setLocationError("現在地の市区町村名を取得できませんでした。もう一度お試しください。");
+      } finally {
+        setLocationLoading(false);
+      }
     }, error => {
       setLocationLoading(false);
       setLocationError(error.code === error.PERMISSION_DENIED ? "位置情報が許可されていません。端末の設定から許可してください。" : "現在地を取得できませんでした。もう一度お試しください。");
